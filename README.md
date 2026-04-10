@@ -574,8 +574,7 @@ make clean && make build
 
 ## License
 
-ACRaaS is proprietary software. All rights reserved.
+Synora is proprietary software. All rights reserved.
 
 ---
 
-For support, issues, or questions, please contact the engineering team.
