@@ -1,4 +1,4 @@
-# Synora Synora: Building the "Samsung Ads" for Every Other TV
+# Synora: Building the "Samsung Ads" for Every Other TV
 
 **The open ACR data platform that turns non-Samsung smart TVs into advertising goldmines.**
 
