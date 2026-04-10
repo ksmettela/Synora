@@ -1,0 +1,13 @@
+.env.local
+.DS_Store
+*.pyc
+__pycache__/
+.pytest_cache/
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
+.rocks/
+rocksdb/
+.faust_env

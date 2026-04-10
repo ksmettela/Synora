@@ -1,0 +1,119 @@
+replicaCount: 10
+
+image:
+  repository: acraas/fingerprint-ingestor
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "10000"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: fingerprint-ingestor.acraas.internal
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: fingerprint-ingestor-tls
+      hosts:
+        - fingerprint-ingestor.acraas.internal
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 10
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+env:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-bootstrap.messaging:9092"
+  REDIS_URL: "redis-cluster.caching:6379"
+  RATE_LIMIT_PER_SECOND: "10000"
+  LOG_LEVEL: "info"
+  SERVICE_NAME: "fingerprint-ingestor"
+
+secrets:
+  KAFKA_API_KEY: ""
+  KAFKA_API_SECRET: ""
+  SERVICE_AUTH_TOKEN: ""
+
+kafka:
+  bootstrapServers: "kafka-bootstrap.messaging:9092"
+  topic: "fingerprints"
+  consumerGroup: "fingerprint-ingestor"
+  partitions: 6
+
+redis:
+  url: "redis-cluster.caching:6379"
+  ttl: 3600
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - fingerprint-ingestor
+          topologyKey: kubernetes.io/hostname
+
+nodeSelector: {}
+
+tolerations: []
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+podSecurityContext:
+  fsGroup: 1000
+
+priorityClassName: "high-priority"

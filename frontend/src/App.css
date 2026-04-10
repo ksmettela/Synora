@@ -1,0 +1,88 @@
+.App {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.App-header {
+  color: white;
+  padding: 2rem;
+  text-align: center;
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 2.5rem;
+}
+
+.App-header p {
+  margin: 0.5rem 0 0 0;
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+main {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.services {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.services h2 {
+  color: #333;
+  margin-top: 0;
+}
+
+.services ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.services li {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.services li:last-child {
+  border-bottom: none;
+}
+
+.status-badge {
+  font-size: 1.5rem;
+  margin-right: 1rem;
+}
+
+.status-badge {
+  color: #4caf50;
+}
+
+.service-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.status.healthy {
+  background: #4caf50;
+  color: white;
+}
+
+.status.unhealthy {
+  background: #f44336;
+  color: white;
+}

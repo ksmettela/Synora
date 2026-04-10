@@ -1,0 +1,346 @@
+groups:
+  - name: acraas.ingest
+    interval: 30s
+    rules:
+      - alert: IngestRateLow
+        expr: rate(acraas_ingest_requests_total[5m]) < 100
+        for: 5m
+        labels:
+          severity: critical
+          component: ingestion
+        annotations:
+          summary: "Fingerprint ingest rate critically low"
+          description: "Ingest rate is {{ $value | humanize }} req/s, expected > 100 req/s"
+
+      - alert: IngestErrorRateHigh
+        expr: (rate(acraas_ingest_requests_total{status=~"5.."}[5m]) / rate(acraas_ingest_requests_total[5m])) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          component: ingestion
+        annotations:
+          summary: "Fingerprint ingest error rate too high"
+          description: "Error rate is {{ $value | humanizePercentage }}, threshold is 1%"
+
+      - alert: IngestLatencyHigh
+        expr: histogram_quantile(0.99, rate(acraas_ingest_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: ingestion
+        annotations:
+          summary: "Fingerprint ingest p99 latency elevated"
+          description: "p99 latency is {{ $value | humanizeDuration }}"
+
+  - name: acraas.matching
+    interval: 30s
+    rules:
+      - alert: MatchRateLow
+        expr: (rate(acraas_match_requests_total[5m]) / rate(acraas_ingest_requests_total[5m])) < 0.60
+        for: 5m
+        labels:
+          severity: critical
+          component: matching
+        annotations:
+          summary: "Match rate below 60% of ingest rate"
+          description: "Match rate is {{ $value | humanizePercentage }}, expected > 60%"
+
+      - alert: MatchLatencyHigh
+        expr: histogram_quantile(0.99, rate(acraas_match_latency_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: matching
+        annotations:
+          summary: "Matching engine p99 latency too high"
+          description: "p99 latency is {{ $value | humanizeDuration }}, threshold is 100ms"
+
+      - alert: MatchErrorRate
+        expr: (rate(acraas_match_errors_total[5m]) / rate(acraas_match_requests_total[5m])) > 0.005
+        for: 3m
+        labels:
+          severity: warning
+          component: matching
+        annotations:
+          summary: "Matching engine error rate elevated"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+  - name: acraas.api
+    interval: 30s
+    rules:
+      - alert: RTBLatencyHigh
+        expr: histogram_quantile(0.99, rate(acraas_rtb_sync_latency_seconds_bucket[5m])) > 0.005
+        for: 3m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "RTB /sync/openrtb p99 latency exceeds SLO"
+          description: "p99 latency is {{ $value | humanizeDuration }}, SLO is 5ms"
+
+      - alert: APIErrorRate
+        expr: (rate(acraas_api_requests_total{status=~"5.."}[5m]) / rate(acraas_api_requests_total[5m])) > 0.001
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API 5xx error rate too high"
+          description: "5xx rate is {{ $value | humanizePercentage }}, threshold is 0.1%"
+
+      - alert: APITimeoutRate
+        expr: (rate(acraas_api_timeouts_total[5m]) / rate(acraas_api_requests_total[5m])) > 0.005
+        for: 3m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "API timeout rate elevated"
+          description: "Timeout rate is {{ $value | humanizePercentage }}"
+
+      - alert: APIAuthFailures
+        expr: rate(acraas_api_auth_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Elevated API authentication failures"
+          description: "Auth failures rate is {{ $value | humanize }} per second"
+
+  - name: acraas.privacy
+    interval: 30s
+    rules:
+      - alert: OptOutRateSpike
+        expr: (rate(acraas_privacy_optouts_total[5m]) / avg_over_time(rate(acraas_privacy_optouts_total[30m])[5m:1m])) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: privacy
+        annotations:
+          summary: "Opt-out rate spike detected"
+          description: "Opt-out rate is {{ $value | humanize }}x rolling average - possible breach"
+
+      - alert: DeletionJobDelayed
+        expr: (acraas_privacy_deletion_job_duration_seconds > 82800) or (time() - acraas_privacy_last_successful_deletion_timestamp > 82800)
+        for: 1m
+        labels:
+          severity: critical
+          component: privacy
+        annotations:
+          summary: "Data deletion job approaching CCPA 24h deadline"
+          description: "Deletion job has been running {{ $value | humanizeDuration }}, CCPA requires completion within 24h"
+
+      - alert: OptOutProcessingLag
+        expr: acraas_privacy_optout_queue_depth > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: privacy
+        annotations:
+          summary: "Opt-out processing queue is building up"
+          description: "Queue depth is {{ $value | humanize }} items"
+
+      - alert: ConsentDataStale
+        expr: (time() - acraas_privacy_consent_sync_timestamp) > 3600
+        for: 2m
+        labels:
+          severity: warning
+          component: privacy
+        annotations:
+          summary: "Consent data not synced recently"
+          description: "Last sync was {{ $value | humanizeDuration }} ago"
+
+  - name: acraas.kafka
+    interval: 30s
+    rules:
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag{topic=~"fingerprints|matches|deletions"} > 100000
+        for: 5m
+        labels:
+          severity: critical
+          component: messaging
+        annotations:
+          summary: "Kafka consumer lag high on {{ $labels.topic }}"
+          description: "Consumer lag is {{ $value | humanize }} messages in {{ $labels.consumer_group }}"
+
+      - alert: KafkaProducerErrors
+        expr: rate(kafka_producer_record_error_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: critical
+          component: messaging
+        annotations:
+          summary: "Kafka producer errors spiking"
+          description: "Error rate is {{ $value | humanize }} per second"
+
+      - alert: KafkaBrokerDown
+        expr: up{job="kafka"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: messaging
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Broker {{ $labels.instance }} is not responding"
+
+      - alert: KafkaTopicPartitionUnderReplicated
+        expr: kafka_topic_partition_under_replicated_partition == 1
+        for: 2m
+        labels:
+          severity: warning
+          component: messaging
+        annotations:
+          summary: "Kafka topic partition is under-replicated"
+          description: "Topic {{ $labels.topic }} partition {{ $labels.partition }} is under-replicated"
+
+  - name: acraas.infrastructure
+    interval: 30s
+    rules:
+      - alert: RedisMemoryHigh
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.85
+        for: 3m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Memory usage is {{ $value | humanizePercentage }}, threshold is 85%"
+
+      - alert: RedisConnectionsHigh
+        expr: redis_connected_clients > 5000
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis connection count elevated"
+          description: "Active connections: {{ $value | humanize }}"
+
+      - alert: RedisEvictions
+        expr: rate(redis_evicted_keys_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is evicting keys"
+          description: "Eviction rate: {{ $value | humanize }} keys/sec"
+
+      - alert: PostgreSQLConnections
+        expr: (pg_stat_activity_count / pg_settings_max_connections) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL connections near limit"
+          description: "Connection usage is {{ $value | humanizePercentage }}, limit is 80%"
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_slow_queries_total[5m]) > 5
+        for: 3m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL slow query rate high"
+          description: "Slow query rate: {{ $value | humanize }} per second"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 10
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL replication lag too high"
+          description: "Replication lag: {{ $value | humanizeDuration }}"
+
+      - alert: EKSNodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "EKS node is not ready"
+          description: "Node {{ $labels.node }} is in {{ $labels.condition }} state"
+
+      - alert: PodCrashLooping
+        expr: increase(kube_pod_container_status_restarts_total{namespace="acraas"}[15m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} restarted {{ $value | humanize }} times in 15min"
+
+      - alert: PersistentVolumeUsageHigh
+        expr: (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "PersistentVolume usage is high"
+          description: "PV {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+
+      - alert: ElastiCacheConnectionErrors
+        expr: rate(elasticache_connection_errors_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "ElastiCache connection errors detected"
+          description: "Connection error rate: {{ $value | humanize }} per second"
+
+  - name: acraas.slos
+    interval: 60s
+    rules:
+      - alert: IngestSLOViolation
+        expr: |
+          (
+            (rate(acraas_ingest_requests_total{status=~"5.."}[5m]) / rate(acraas_ingest_requests_total[5m])) > 0.01
+            or
+            histogram_quantile(0.99, rate(acraas_ingest_latency_seconds_bucket[5m])) > 1
+          )
+        for: 5m
+        labels:
+          severity: critical
+          slo: "true"
+        annotations:
+          summary: "Ingest service SLO violation"
+          description: "Ingest SLO (99% availability, p99 < 1s) is being violated"
+
+      - alert: MatchingSLOViolation
+        expr: |
+          (
+            (rate(acraas_match_requests_total[5m]) / rate(acraas_ingest_requests_total[5m])) < 0.60
+            or
+            histogram_quantile(0.95, rate(acraas_match_latency_seconds_bucket[5m])) > 0.2
+          )
+        for: 5m
+        labels:
+          severity: critical
+          slo: "true"
+        annotations:
+          summary: "Matching SLO violation"
+          description: "Matching SLO (60% match rate, p95 < 200ms) is being violated"
+
+      - alert: RTBSLO Violation
+        expr: |
+          (
+            (rate(acraas_rtb_sync_requests_total{status=~"5.."}[5m]) / rate(acraas_rtb_sync_requests_total[5m])) > 0.001
+            or
+            histogram_quantile(0.99, rate(acraas_rtb_sync_latency_seconds_bucket[5m])) > 0.005
+          )
+        for: 2m
+        labels:
+          severity: critical
+          slo: "true"
+        annotations:
+          summary: "RTB SLO violation"
+          description: "RTB SLO (99.9% availability, p99 < 5ms) is being violated"

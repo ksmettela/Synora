@@ -1,0 +1,573 @@
+version: '3.9'
+
+networks:
+  acraas-net:
+    driver: bridge
+
+services:
+  # Infrastructure - Message Queue
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: acraas-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: acraas-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: kafka
+      KAFKA_LOG_RETENTION_HOURS: 168
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: acraas-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: acraas-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Infrastructure - Databases
+  scylladb:
+    image: scylladb/scylla:5.2
+    container_name: acraas-scylladb
+    ports:
+      - "9042:9042"
+      - "10000:10000"
+    environment:
+      SCYLLA_SEEDS: scylladb
+      SCYLLA_BROADCAST_ADDRESS: scylladb
+      SCYLLA_LISTEN_ADDRESS: 0.0.0.0
+    volumes:
+      - scylladb_data:/var/lib/scylla
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "cqlsh", "localhost", "9042", "-e", "describe cluster"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    container_name: acraas-postgres
+    environment:
+      POSTGRES_USER: acraas
+      POSTGRES_PASSWORD: acraas_pass
+      POSTGRES_DB: acraas
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acraas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: acraas-redis
+    command: redis-server --appendonly yes --requirepass redispass123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Infrastructure - Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: acraas-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: acraas_access
+      MINIO_ROOT_PASSWORD: acraas_secret
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Infrastructure - Query Engine
+  trino:
+    image: trinodb/trino:435
+    container_name: acraas-trino
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports:
+      - "8088:8080"
+    environment:
+      NODE_ID: "node-1"
+      NODE_ENVIRONMENT: "production"
+      CATALOG_S3: |
+        connector.name=iceberg
+        iceberg.catalog.type=hive_metastore
+        hive.metastore.type=none
+        iceberg.file_format=parquet
+    volumes:
+      - ./trino:/etc/trino:ro
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Infrastructure - Monitoring
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: acraas-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: acraas-grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    container_name: acraas-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:14268"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Pipeline - Airflow
+  airflow-postgres:
+    image: postgres:16
+    container_name: acraas-airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: acraas-airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+    volumes:
+      - ./data-pipeline/airflow-dags:/opt/airflow/dags
+      - ./data-pipeline/airflow-logs:/opt/airflow/logs
+      - ./data-pipeline/airflow-plugins:/opt/airflow/plugins
+    networks:
+      - acraas-net
+    command: airflow db upgrade
+
+  airflow:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: acraas-airflow
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    ports:
+      - "8089:8080"
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ./data-pipeline/airflow-dags:/opt/airflow/dags
+      - ./data-pipeline/airflow-logs:/opt/airflow/logs
+      - ./data-pipeline/airflow-plugins:/opt/airflow/plugins
+    networks:
+      - acraas-net
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: acraas-airflow-scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ./data-pipeline/airflow-dags:/opt/airflow/dags
+      - ./data-pipeline/airflow-logs:/opt/airflow/logs
+      - ./data-pipeline/airflow-plugins:/opt/airflow/plugins
+    networks:
+      - acraas-net
+    command: scheduler
+
+  # Core Services
+  fingerprint-ingestor:
+    build:
+      context: ./services/fingerprint-ingestor
+      dockerfile: Dockerfile
+    container_name: acraas-fingerprint-ingestor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://:redispass123@redis:6379
+      LOG_LEVEL: info
+      PORT: 8080
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  fingerprint-indexer:
+    build:
+      context: ./services/fingerprint-indexer
+      dockerfile: Dockerfile
+    container_name: acraas-fingerprint-indexer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      scylladb:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCYLLA_HOSTS: scylladb:9042
+      LOG_LEVEL: info
+      PORT: 8082
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  matching-engine:
+    build:
+      context: ./services/matching-engine
+      dockerfile: Dockerfile
+    container_name: acraas-matching-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      scylladb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCYLLA_HOSTS: scylladb:9042
+      REDIS_URL: redis://:redispass123@redis:6379
+      LOG_LEVEL: info
+      PORT: 8081
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  segmentation-engine:
+    build:
+      context: ./services/segmentation-engine
+      dockerfile: Dockerfile
+    container_name: acraas-segmentation-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://:redispass123@redis:6379
+      LOG_LEVEL: info
+      PORT: 8083
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  advertiser-api:
+    build:
+      context: ./services/advertiser-api
+      dockerfile: Dockerfile
+    container_name: acraas-advertiser-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+    environment:
+      POSTGRES_URL: postgresql://acraas:acraas_pass@postgres:5432/acraas
+      REDIS_URL: redis://:redispass123@redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: info
+      PORT: 8084
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  privacy-service:
+    build:
+      context: ./services/privacy-service
+      dockerfile: Dockerfile
+    container_name: acraas-privacy-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      POSTGRES_URL: postgresql://acraas:acraas_pass@postgres:5432/acraas
+      REDIS_URL: redis://:redispass123@redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: info
+      PORT: 8085
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  billing-service:
+    build:
+      context: ./services/billing-service
+      dockerfile: Dockerfile
+    container_name: acraas-billing-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8086:8086"
+    environment:
+      POSTGRES_URL: postgresql://acraas:acraas_pass@postgres:5432/acraas
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: info
+      PORT: 8086
+      STRIPE_SECRET_KEY: sk_test_changeme
+      TRACE_ENABLED: "true"
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: acraas-frontend
+    depends_on:
+      advertiser-api:
+        condition: service_healthy
+      privacy-service:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8084
+      REACT_APP_PRIVACY_API_URL: http://localhost:8085
+      NODE_ENV: development
+    networks:
+      - acraas-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  scylladb_data:
+  postgres_data:
+  airflow_postgres_data:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:

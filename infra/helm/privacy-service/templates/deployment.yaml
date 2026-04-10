@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: privacy-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: privacy-service
+  template:
+    metadata:
+      labels:
+        app: privacy-service
+    spec:
+      containers:
+      - name: privacy-service
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi

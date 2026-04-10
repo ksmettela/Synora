@@ -1,0 +1,2335 @@
+# ACRaaS SDK Integration Guide
+**Version 1.0 · April 2026**
+
+## 1. Overview
+
+ACRaaS (Automatic Content Recognition as a Service) is a cloud-native platform that enables TV manufacturers to monetize viewing behavior data through privacy-preserving audio fingerprinting. By integrating the ACRaaS SDK into your TV firmware, you can capture what your users watch and earn 30% revenue share from the data insights generated. The platform handles all backend complexity—fingerprint matching, audience segmentation, real-time bidding integration, and regulatory compliance—so you can focus on TV firmware and user experience.
+
+**Technical Overview**: The ACRaaS SDK is a lightweight C library (< 5MB binary) that runs on your TV OS (Tizen, webOS, Android TV, or Linux-based platforms). Every 30 seconds, it captures a 3-second audio sample from the TV's HDMI input or internal audio bus, converts it to a cryptographic fingerprint using FFT analysis, and stores the fingerprint locally in an encrypted SQLite database. Every 60 seconds, it batches up to 20 fingerprints and sends them via HTTPS to the ACRaaS cloud platform. The cloud matches fingerprints against a database of 50+ million TV episodes and movies, segments audiences based on genre/network/demographics, and monetizes that data through programmatic advertising. Critically, the SDK never captures raw audio, PII, full IP addresses, or MAC addresses—only anonymous hashes.
+
+### Data Flow Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      TV DEVICE (your firmware)              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Audio Capture (ALSA/HDMI ARC)                        │  │
+│  │ • 3-second capture every 30 seconds                  │  │
+│  │ • Stereo downmix to mono 8kHz PCM                    │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         ↓                                    │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ FFT Fingerprint Engine                               │  │
+│  │ • Bark frequency scale analysis                      │  │
+│  │ • 256-bit SHA-256 hash output                        │  │
+│  │ • Deterministic (same audio = same hash)             │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         ↓                                    │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ SQLite Local Cache (encrypted)                       │  │
+│  │ • Stores up to 500 fingerprints locally              │  │
+│  │ • Timestamp, device_id, household_type metadata     │  │
+│  │ • Survives TV reboot/power cycles                    │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         ↓                                    │
+│           HTTPS POST (batch every 60 seconds)               │
+│                         │                                    │
+└─────────────────────────┼────────────────────────────────────┘
+                          │
+                          ↓
+        ┌─────────────────────────────────────┐
+        │  ACRaaS Cloud Platform               │
+        │  ingest.acraas.io/v1/fingerprints   │
+        ├─────────────────────────────────────┤
+        │                                      │
+        │  ┌──────────────────────────────┐   │
+        │  │ Fingerprint Matcher          │   │
+        │  │ • 50M+ episode/movie DB      │   │
+        │  │ • Fuzzy matching (±2s drift) │   │
+        │  └──────────────┬───────────────┘   │
+        │                 ↓                    │
+        │  ┌──────────────────────────────┐   │
+        │  │ Audience Segmentation         │   │
+        │  │ • Genre/network/DMA/income   │   │
+        │  │ • Behavioral cohorts          │   │
+        │  └──────────────┬───────────────┘   │
+        │                 ↓                    │
+        │  ┌──────────────────────────────┐   │
+        │  │ Monetization Engine           │   │
+        │  │ • Real-time bidding (RTB)     │   │
+        │  │ • Segment pricing & auctions  │   │
+        │  └──────────────┬───────────────┘   │
+        │                 ↓                    │
+        │  ┌──────────────────────────────┐   │
+        │  │ Revenue Allocation            │   │
+        │  │ • 30% to manufacturer (you)   │   │
+        │  │ • 70% to ACRaaS platform      │   │
+        │  └──────────────────────────────┘   │
+        │                                      │
+        └─────────────────────────────────────┘
+```
+
+### What ACRaaS Collects
+
+- **Audio fingerprint hash**: A 256-bit cryptographic hash derived from audio spectral analysis. This hash cannot be reversed to reconstruct the original audio—it's a one-way mathematical function.
+- **Anonymized device ID**: A stable identifier generated by hashing hardware identifiers (serial number, MAC address) with a per-device salt, then anonymizing with a salt-per-month. Different months produce different device IDs.
+- **IP prefix**: Only the first 24 bits of the IP address (e.g., 192.168.1.x), not the full IP.
+- **Timestamp**: UTC-only, rounded to the nearest minute for additional privacy.
+- **Manufacturer and model string**: TV model information (e.g., "Samsung QN85Q90A").
+
+### What ACRaaS NEVER Collects
+
+- **Raw audio**: Only the cryptographic fingerprint is sent to our servers.
+- **Full MAC address**: Only the first 48 bits (OUI vendor prefix).
+- **Full IP address**: Only /24 prefix, never the complete address.
+- **User names or accounts**: No PII whatsoever.
+- **GPS location**: Device location is not captured.
+- **App activity**: Only TV content viewing from the HDMI/audio input is fingerprinted.
+- **Text, metadata, or closed captions**: No textual content is captured.
+
+### Revenue Share Program Summary
+
+You earn **30% of gross data revenue** generated by your devices. ACRaaS's monetization engine sells your audience segments to premium brands and media agencies via programmatic advertising. ACRaaS retains 70% to cover cloud infrastructure, matching algorithms, data compliance, and platform operations. Monthly revenue reports are available in your manufacturer dashboard at https://portal.acraas.io/manufacturers. Minimum payout threshold is $500/month; payments are processed via Stripe on the 15th of each month (Net-30 terms).
+
+---
+
+## 2. System Requirements
+
+### Operating System & Firmware Versions
+
+- **Tizen**: 6.0 or later (TV or set-top-box builds)
+- **webOS**: 6.0 or later (webOS TV/commercial display builds)
+- **Android TV**: 9 (Android Pie) or later
+- **Fire OS**: 7.0 or later (Amazon Fire TV devices)
+- **Generic Linux**: Linux kernel 4.9+, glibc 2.23+ or musl 1.1.20+
+
+### System Libraries (Minimum Versions)
+
+| Library       | Min Version | Purpose                                    |
+|---------------|-------------|--------------------------------------------|
+| ALSA (libasound2) | 1.2.0       | Audio device capture and mixing            |
+| OpenSSL       | 1.1.1       | TLS/HTTPS, HMAC-SHA256 for validation      |
+| libcurl       | 7.68.0      | HTTP/HTTPS POST requests to cloud          |
+| SQLite        | 3.35.0      | Local encrypted fingerprint cache          |
+| pthreads      | POSIX 2008  | Multi-threaded fingerprint processing      |
+
+All libraries must be dynamically linked or statically included in your firmware build. The SDK is compatible with both OpenSSL 1.1.1 and 3.x series.
+
+### Hardware Requirements
+
+- **CPU**: ARM Cortex-A (all variants: A9, A53, A72, A73, etc.) or x86-64
+- **RAM**: Minimum 256MB available to application layer (SDK peak usage: ~8MB)
+- **Storage**: 
+  - 5MB for SDK binary (`libacr.so` or `.a`)
+  - 10MB for SQLite database (500 fingerprints × ~16KB per record with metadata)
+  - 2MB for temporary buffers and logs
+
+### Network Requirements
+
+- **Outbound HTTPS**: TCP port 443 to `ingest.acraas.io` (no inbound ports required)
+- **DNS**: Must resolve `api.acraas.io`, `ingest.acraas.io`, `cdn.acraas.io`
+- **Bandwidth**: ~1KB per minute under normal operation (batch of 20 fingerprints ≈ 800 bytes compressed)
+- **Firewall**: Must allow POST requests to `ingest.acraas.io:443`; no persistent TCP connections required
+
+---
+
+## 3. SDK Distribution & Verification
+
+### CDN URLs and Checksums
+
+The ACRaaS SDK is distributed via our global CDN to ensure fast, reliable downloads during your firmware build process. Each release includes cryptographic checksums (SHA-256) to verify integrity before flashing to production devices.
+
+**CDN URL Pattern:**
+```
+https://sdk.acraas.io/v{MAJOR}.{MINOR}.{PATCH}/{platform}/libacr.{so|a|dll}
+```
+
+**Supported Platforms:**
+- `linux-arm64` (ARMv8 64-bit, e.g., Cortex-A72, A73)
+- `linux-armv7` (ARMv7 32-bit, e.g., Cortex-A9, A53)
+- `linux-x86_64` (Intel/AMD 64-bit)
+- `android-arm64-v8a` (Android NDK ABI)
+- `android-armeabi-v7a` (Android NDK 32-bit)
+- `webos-arm64` (webOS TV)
+- `tizen-arm64` (Tizen TV)
+
+**Example Download:**
+```bash
+# Download SDK v1.0.0 for ARM64 Linux
+curl -O https://sdk.acraas.io/v1.0.0/linux-arm64/libacr.so
+
+# Download checksums file
+curl -O https://sdk.acraas.io/v1.0.0/checksums.txt
+
+# Verify integrity (MANDATORY before firmware flash)
+sha256sum -c checksums.txt --ignore-missing
+# Output: libacr.so: OK
+```
+
+### Semantic Versioning and Breaking Changes
+
+The ACRaaS SDK follows semantic versioning:
+
+- **MAJOR version** (e.g., 2.0.0): Breaking API changes, new C ABI, incompatible with prior versions. Manufacturers must recompile and retest. ACRaaS will publish a migration guide.
+- **MINOR version** (e.g., 1.1.0): New features, backward compatible. Existing code continues to work without changes.
+- **PATCH version** (e.g., 1.0.1): Bug fixes, performance improvements, security patches. Drop-in replacement, no recompilation needed.
+
+You can safely update from 1.0.0 → 1.0.1 → 1.1.0 → 1.2.0 without code changes. An upgrade from 1.x.x to 2.0.0 requires integration work.
+
+### SDK Release Notes
+
+Full release notes, including new features, deprecations, and known issues, are published at:
+```
+https://sdk.acraas.io/changelog
+```
+
+Subscribe to updates at https://portal.acraas.io/settings/notifications.
+
+---
+
+## 4. Build Integration
+
+### 4.1 CMake Integration (Tizen, webOS, Generic Linux)
+
+This example shows a complete `CMakeLists.txt` for a TV application that links the ACRaaS SDK:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyTVApp C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
+
+# Paths to ACRaaS SDK
+set(ACR_SDK_PATH "${CMAKE_SOURCE_DIR}/external/acr-sdk/v1.0.0" CACHE PATH "ACRaaS SDK path")
+
+# Create imported target for libacr
+add_library(acr SHARED IMPORTED)
+
+# Set platform-specific SDK binary path
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(ACR_LIB_PATH "${ACR_SDK_PATH}/linux-arm64/libacr.so")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|armv7|armv7l")
+    set(ACR_LIB_PATH "${ACR_SDK_PATH}/linux-armv7/libacr.so")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+    set(ACR_LIB_PATH "${ACR_SDK_PATH}/linux-x86_64/libacr.so")
+else()
+    message(FATAL_ERROR "Unsupported processor: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+# Verify SDK binary exists
+if(NOT EXISTS "${ACR_LIB_PATH}")
+    message(FATAL_ERROR "ACRaaS SDK not found at ${ACR_LIB_PATH}")
+endif()
+
+set_target_properties(acr PROPERTIES
+    IMPORTED_LOCATION "${ACR_LIB_PATH}"
+    INTERFACE_INCLUDE_DIRECTORIES "${ACR_SDK_PATH}/include"
+)
+
+# Link required system libraries
+find_package(ALSA REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
+find_package(SQLite3 REQUIRED)
+
+# Find pthreads
+find_package(Threads REQUIRED)
+
+# Your TV application
+add_executable(my_tv_app
+    src/main.c
+    src/ui.c
+    src/consent_manager.c
+    src/acr_integration.c
+)
+
+# Link ACRaaS SDK and dependencies
+target_link_libraries(my_tv_app
+    acr
+    ALSA::ALSA
+    OpenSSL::Crypto
+    OpenSSL::SSL
+    CURL::libcurl
+    SQLite::SQLite3
+    Threads::Threads
+)
+
+# Set RPATH for runtime library loading (critical for embedded systems)
+set_target_properties(my_tv_app PROPERTIES
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+    INSTALL_RPATH "\$ORIGIN/../lib:\$ORIGIN/lib:/lib:/usr/lib:/usr/local/lib"
+)
+
+# Optional: enable debug symbols in Release builds for troubleshooting
+if(APPLE OR UNIX)
+    target_compile_options(my_tv_app PRIVATE -g)
+    # Strip symbols in final binary
+    add_custom_command(TARGET my_tv_app POST_BUILD
+        COMMAND strip -S $<TARGET_FILE:my_tv_app> || true
+    )
+endif()
+```
+
+**Build Instructions:**
+```bash
+mkdir build && cd build
+cmake .. -CMAKE_BUILD_TYPE=Release -DACR_SDK_PATH=/path/to/acr-sdk
+make -j$(nproc)
+make install
+```
+
+### 4.2 Android TV Integration (Kotlin + JNI)
+
+For Android TV apps, integrate the SDK via the Android NDK. The ACRaaS team provides a Kotlin wrapper that bridges JNI to the native C library.
+
+**build.gradle (Module: app)**:
+```gradle
+android {
+    compileSdk 34
+    
+    defaultConfig {
+        applicationId "com.example.mytvapp"
+        minSdk 29  // Android TV 9+
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        
+        // Configure NDK for multiple ABIs
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+        
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++14 -Wall -Wextra"
+                cFlags "-std=c11 -Wall -Wextra"
+                arguments "-DACR_SDK_PATH=${project.rootDir}/acr-sdk"
+            }
+        }
+    }
+    
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+    
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    // ACRaaS SDK Kotlin wrapper (published to Maven Central)
+    implementation 'io.acraas:sdk-android:1.0.0'
+    
+    // Required dependencies
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.leanback:leanback:1.0.0'
+    
+    // Testing
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+```
+
+**ProGuard Rules (proguard-rules.pro)**:
+```
+# Keep ACRaaS SDK classes
+-keep class io.acraas.sdk.** { *; }
+-keep class io.acraas.sdk.AcrSdk { *; }
+-keep interface io.acraas.sdk.** { *; }
+
+# Keep native method names (critical for JNI)
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Suppress warnings about missing SDK
+-dontwarn io.acraas.**
+```
+
+**Example Android TV Activity (Kotlin)**:
+```kotlin
+import io.acraas.sdk.AcrSdk
+import io.acraas.sdk.AcrConfig
+import android.content.Context
+import android.content.SharedPreferences
+
+class MainActivity : Activity() {
+    private lateinit var acrSdk: AcrSdk
+    private lateinit var prefs: SharedPreferences
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        
+        prefs = getSharedPreferences("acr_settings", Context.MODE_PRIVATE)
+        
+        // Initialize ACRaaS SDK
+        val config = AcrConfig.Builder(this)
+            .setApiKey("your-api-key-here")
+            .setServerUrl("https://ingest.acraas.io/v1")
+            .setCaptureInterval(30)  // seconds
+            .setMaxCacheSize(500)    // fingerprints
+            .build()
+        
+        acrSdk = AcrSdk.getInstance(this)
+        acrSdk.init(config)
+        
+        // Check and set user consent (REQUIRED before start)
+        val userConsented = prefs.getBoolean("acr_consent", false)
+        acrSdk.setConsent(userConsented)
+        
+        if (userConsented) {
+            acrSdk.start()
+        }
+        
+        // Set up consent change listener
+        setupConsentUI()
+    }
+    
+    private fun setupConsentUI() {
+        val consentToggle = findViewById<Switch>(R.id.consent_toggle)
+        consentToggle.isChecked = prefs.getBoolean("acr_consent", false)
+        
+        consentToggle.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("acr_consent", isChecked).apply()
+            acrSdk.setConsent(isChecked)
+            
+            if (isChecked) {
+                acrSdk.start()
+            } else {
+                acrSdk.stop()
+            }
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        acrSdk.stop()
+        acrSdk.flush()
+    }
+}
+```
+
+### 4.3 Tizen-Specific Integration
+
+Tizen TVs require specific manifest permissions and packaging configurations.
+
+**tizen-manifest.xml**:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest xmlns="http://tizen.org/ns/packages" 
+          package="com.example.mytvapp" 
+          version="1.0.0">
+    
+    <label>My TV App</label>
+    <icon>icon.png</icon>
+    
+    <ui-application appid="com.example.mytvapp.main" 
+                    exec="mytvapp" 
+                    type="capp" 
+                    nodisplay="false">
+        <label>My TV App</label>
+        <icon>icon.png</icon>
+        <metadata key="http://tizen.org/metadata/video_play" 
+                  value="true"/>
+    </ui-application>
+    
+    <!-- Required privileges for ACRaaS SDK -->
+    <privilege>http://tizen.org/privilege/network.set</privilege>
+    <privilege>http://tizen.org/privilege/network.get</privilege>
+    <privilege>http://tizen.org/privilege/systemmanager.admin</privilege>
+    <privilege>http://tizen.org/privilege/mediastorage</privilege>
+    <privilege>http://tizen.org/privilege/sound.manager</privilege>
+    
+</manifest>
+```
+
+**Tizen Packaging (.tpk)**:
+```bash
+# 1. Create package structure
+mkdir -p mytvapp.tpk/bin
+mkdir -p mytvapp.tpk/lib
+mkdir -p mytvapp.tpk/res
+
+# 2. Copy binary and SDK
+cp build/mytvapp mytvapp.tpk/bin/
+cp external/acr-sdk/v1.0.0/tizen-arm64/libacr.so mytvapp.tpk/lib/
+
+# 3. Copy manifest
+cp tizen-manifest.xml mytvapp.tpk/
+
+# 4. Create TPK
+tar czf mytvapp.tpk -C mytvapp.tpk .
+
+# 5. Sign package (requires Tizen certificate)
+tizen package --type tpk --sign MyProfile -- mytvapp.tpk
+```
+
+### 4.4 webOS-Specific Integration
+
+webOS (LG TVs) uses a similar approach with webOS-specific manifest configuration.
+
+**appinfo.json**:
+```json
+{
+    "id": "com.example.mytvapp",
+    "version": "1.0.0",
+    "vendor": "My Company",
+    "type": "native",
+    "main": "mytvapp",
+    "title": "My TV App",
+    "icon": "icon.png",
+    
+    "requiredPermissions": [
+        "LAUNCH",
+        "ACCESS_INTERNET",
+        "READ_DEVICE_IDENTIFYING_DATA",
+        "AUDIO_CONTROL"
+    ],
+    
+    "uiRevision": 2,
+    "visible": true,
+    "bgImage": "bg.png",
+    "largeIcon": "icon-large.png"
+}
+```
+
+**webOS IPK Packaging**:
+```bash
+# 1. Prepare package directory
+mkdir -p webos-package
+cp bin/mytvapp webos-package/
+cp external/acr-sdk/v1.0.0/webos-arm64/libacr.so webos-package/lib/
+cp appinfo.json webos-package/
+
+# 2. Create IPK (essentially a TAR.GZ archive)
+tar czf mytvapp.ipk -C webos-package .
+
+# 3. Sign and package with webOS tools
+ares-package mytvapp.ipk
+
+# 4. Install on TV for testing
+ares-install mytvapp.ipk -d tv-device
+```
+
+---
+
+## 5. Step-by-Step Integration
+
+### 5.1 Privacy-First Initialization (REQUIRED)
+
+**Critical**: User consent must be obtained BEFORE initializing the SDK. The correct order is:
+
+1. App launches
+2. Check if user has previously granted consent (from local settings)
+3. If no prior consent: show consent UI, wait for user decision, save to local storage
+4. Initialize SDK with consent flag already set
+5. Only then call `acr_start()`
+
+**WRONG approach** (do not do this):
+```c
+// This is INCORRECT — captures data before consent
+acr_init(&cfg);
+acr_start();
+
+// ... later in settings screen ...
+acr_set_consent(user_granted_consent);  // Too late, data may have been captured
+```
+
+**CORRECT approach**:
+```c
+#include <acr/acr.h>
+#include <stdbool.h>
+
+int main() {
+    // Step 1: Load consent from local settings
+    bool user_consented = load_consent_from_storage();
+    
+    if (!user_consented) {
+        // Step 2: Show consent UI (blocking call)
+        user_consented = show_consent_dialog();
+        if (user_consented) {
+            save_consent_to_storage(true);
+        }
+    }
+    
+    // Step 3: Initialize SDK
+    acr_config_t config = {
+        .api_key = "abc123-your-api-key",
+        .server_url = "https://ingest.acraas.io/v1",
+        .capture_interval_sec = 30,
+        .max_cache_size = 500,
+        .device_model = "Samsung QN85Q90A",
+    };
+    
+    int ret = acr_init(&config);
+    if (ret != ACR_OK) {
+        fprintf(stderr, "Failed to initialize ACRaaS: %d\n", ret);
+        return 1;
+    }
+    
+    // Step 4: Set consent BEFORE starting capture
+    acr_set_consent(user_consented);
+    
+    // Step 5: Start audio capture only if consented
+    if (user_consented) {
+        ret = acr_start();
+        if (ret != ACR_OK) {
+            fprintf(stderr, "Failed to start ACRaaS: %d\n", ret);
+            return 1;
+        }
+    }
+    
+    // Your TV app main loop
+    run_tv_app();
+    
+    // Clean shutdown
+    acr_stop();
+    acr_flush();
+    return 0;
+}
+
+// In settings/preferences screen: handle consent changes
+void on_user_consent_changed(bool new_consent) {
+    acr_set_consent(new_consent);
+    
+    if (new_consent) {
+        acr_start();       // Resume capture
+    } else {
+        acr_stop();        // Stop and purge local cache
+    }
+    
+    save_consent_to_storage(new_consent);
+}
+```
+
+### 5.2 Complete Integration Example (C)
+
+Here's a full, production-ready C integration example:
+
+```c
+#include <acr/acr.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <unistd.h>
+
+// Global SDK instance for signal handlers
+static acr_handle_t g_acr_handle = NULL;
+
+// Signal handler for graceful shutdown
+static void signal_handler(int sig) {
+    if (g_acr_handle != NULL) {
+        fprintf(stderr, "Shutting down ACRaaS SDK gracefully...\n");
+        acr_stop(g_acr_handle);
+        acr_flush(g_acr_handle);
+        acr_deinit(g_acr_handle);
+    }
+    exit(0);
+}
+
+// Load user consent from persistent storage (example using a file)
+static bool load_consent_from_storage(void) {
+    FILE *fp = fopen("/var/lib/mytvapp/acr_consent.conf", "r");
+    if (fp == NULL) {
+        return false;  // No prior consent, default to false
+    }
+    
+    char buffer[16];
+    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        fclose(fp);
+        return (buffer[0] == '1');
+    }
+    fclose(fp);
+    return false;
+}
+
+// Save user consent to persistent storage
+static void save_consent_to_storage(bool consented) {
+    FILE *fp = fopen("/var/lib/mytvapp/acr_consent.conf", "w");
+    if (fp != NULL) {
+        fprintf(fp, "%d\n", consented ? 1 : 0);
+        fclose(fp);
+    }
+}
+
+// Get unique device ID (used internally by SDK)
+static void get_device_id(char *buffer, size_t size) {
+    acr_get_device_id(g_acr_handle, buffer, size);
+}
+
+int main(int argc, char *argv[]) {
+    // Install signal handlers
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    
+    printf("=== ACRaaS SDK Integration Example ===\n");
+    
+    // STEP 1: Load or request user consent
+    bool user_consented = load_consent_from_storage();
+    printf("User consent status: %s\n", user_consented ? "YES" : "NO");
+    
+    // STEP 2: Initialize SDK configuration
+    acr_config_t config = {
+        .api_key = "sk-prod-abc123def456",  // Obtain from portal.acraas.io
+        .server_url = "https://ingest.acraas.io/v1",
+        .capture_interval_sec = 30,        // Capture 3sec every 30sec
+        .max_cache_size = 500,             // Store up to 500 fingerprints
+        .device_model = "Samsung QN85Q90A",
+        .manufacturer = "Samsung",
+        .batch_size = 20,                  // Send batches of 20
+        .batch_timeout_sec = 60,           // Or send every 60 seconds
+    };
+    
+    // STEP 3: Initialize the SDK
+    int ret = acr_init(&config);
+    if (ret != ACR_OK) {
+        fprintf(stderr, "ERROR: acr_init failed with code %d\n", ret);
+        return 1;
+    }
+    printf("ACRaaS SDK initialized successfully\n");
+    
+    g_acr_handle = config.handle;  // Store global handle for signal handler
+    
+    // STEP 4: Set user consent (MUST be before acr_start)
+    ret = acr_set_consent(user_consented);
+    if (ret != ACR_OK) {
+        fprintf(stderr, "ERROR: acr_set_consent failed with code %d\n", ret);
+        acr_deinit(g_acr_handle);
+        return 1;
+    }
+    
+    // STEP 5: Start audio capture if user consented
+    if (user_consented) {
+        ret = acr_start();
+        if (ret != ACR_OK) {
+            fprintf(stderr, "ERROR: acr_start failed with code %d\n", ret);
+            acr_deinit(g_acr_handle);
+            return 1;
+        }
+        printf("ACRaaS audio capture started\n");
+    } else {
+        printf("ACRaaS capture skipped (user opted out)\n");
+    }
+    
+    // STEP 6: Get device ID for logging
+    char device_id[256];
+    acr_get_device_id(device_id, sizeof(device_id));
+    printf("Device ID: %s\n", device_id);
+    
+    // Run your TV application main loop
+    printf("Running TV application (press Ctrl+C to stop)...\n");
+    while (1) {
+        // Your TV app logic here
+        sleep(1);
+    }
+    
+    // Cleanup (reached on Ctrl+C via signal handler)
+    return 0;
+}
+```
+
+**Build and run:**
+```bash
+gcc -o tv_app main.c -lacr -lalsa -lssl -lcrypto -lcurl -lsqlite3 -lpthread
+./tv_app
+```
+
+### 5.3 Handling Consent Changes at Runtime
+
+If your TV app has a settings menu where users can change their privacy preferences, update the SDK in real-time:
+
+```c
+// Called when user toggles "Help improve TV" setting
+void on_user_consent_changed(bool new_consent) {
+    printf("User changed consent to: %s\n", new_consent ? "YES" : "NO");
+    
+    // Update SDK immediately
+    int ret = acr_set_consent(new_consent);
+    if (ret != ACR_OK) {
+        fprintf(stderr, "Failed to update consent: %d\n", ret);
+        return;
+    }
+    
+    // Start or stop capture
+    if (new_consent) {
+        printf("Resuming ACRaaS audio capture...\n");
+        acr_start();
+    } else {
+        printf("Stopping ACRaaS audio capture and purging cache...\n");
+        acr_stop();
+        // acr_stop() automatically purges locally cached fingerprints
+    }
+    
+    // Persist the change
+    save_consent_to_storage(new_consent);
+    
+    // Update UI
+    update_settings_ui(new_consent);
+}
+```
+
+### 5.4 Android TV Integration (Full Example)
+
+Complete Kotlin code for a minimal Android TV app:
+
+```kotlin
+import android.app.Activity
+import android.content.Context
+import android.content.SharedPreferences
+import android.os.Bundle
+import android.widget.Switch
+import android.widget.TextView
+import io.acraas.sdk.AcrSdk
+import io.acraas.sdk.AcrConfig
+import java.util.Locale
+
+class MainActivity : Activity() {
+    
+    private lateinit var acrSdk: AcrSdk
+    private lateinit var prefs: SharedPreferences
+    private lateinit var statusText: TextView
+    private lateinit var consentToggle: Switch
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        
+        // Initialize UI views
+        statusText = findViewById(R.id.status_text)
+        consentToggle = findViewById(R.id.consent_toggle)
+        
+        // Initialize SharedPreferences for persistent storage
+        prefs = getSharedPreferences("acr_prefs", Context.MODE_PRIVATE)
+        
+        // Initialize ACRaaS SDK
+        initializeAcrSdk()
+        
+        // Set up UI listeners
+        setupConsentUI()
+    }
+    
+    private fun initializeAcrSdk() {
+        try {
+            // Check if user previously granted consent
+            val userConsented = prefs.getBoolean("user_consent", false)
+            
+            // Configure the SDK
+            val config = AcrConfig.Builder(this)
+                .setApiKey("sk-prod-your-api-key-here")
+                .setServerUrl("https://ingest.acraas.io/v1")
+                .setDeviceModel("Generic Android TV")
+                .setManufacturer("MyManufacturer")
+                .setCaptureIntervalSeconds(30)
+                .setMaxCacheSize(500)
+                .setBatchSize(20)
+                .setBatchTimeoutSeconds(60)
+                .build()
+            
+            // Initialize SDK
+            acrSdk = AcrSdk.getInstance(this)
+            acrSdk.init(config)
+            
+            // Set consent BEFORE starting
+            acrSdk.setConsent(userConsented)
+            
+            // Start capture if consented
+            if (userConsented) {
+                acrSdk.start()
+                updateStatus("ACRaaS Running (User Consented)")
+            } else {
+                updateStatus("ACRaaS Stopped (User Opted Out)")
+            }
+            
+            // Update toggle to match stored preference
+            consentToggle.isChecked = userConsented
+            
+        } catch (e: Exception) {
+            updateStatus("Error initializing ACRaaS: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
+    private fun setupConsentUI() {
+        consentToggle.setOnCheckedChangeListener { _, isChecked ->
+            // Update consent status
+            prefs.edit().putBoolean("user_consent", isChecked).apply()
+            acrSdk.setConsent(isChecked)
+            
+            if (isChecked) {
+                acrSdk.start()
+                updateStatus("ACRaaS Running (User Consented)")
+            } else {
+                acrSdk.stop()
+                updateStatus("ACRaaS Stopped (User Opted Out)")
+            }
+        }
+    }
+    
+    private fun updateStatus(message: String) {
+        runOnUiThread {
+            statusText.text = String.format(
+                Locale.US,
+                "Status: %s\nTime: %tH:%<tM:%<tS",
+                message,
+                System.currentTimeMillis()
+            )
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // Graceful cleanup
+        try {
+            acrSdk.stop()
+            acrSdk.flush()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Optionally stop capture when app backgrounded
+        // acrSdk.stop()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Optionally resume capture when app returns to foreground
+        // if (prefs.getBoolean("user_consent", false)) {
+        //     acrSdk.start()
+        // }
+    }
+}
+```
+
+---
+
+## 6. API Reference (C ABI)
+
+The ACRaaS SDK exposes 6 core functions via C ABI. All are thread-safe unless otherwise noted.
+
+### acr_init(acr_config_t *config)
+
+**Purpose**: Initialize the ACRaaS SDK. Must be called once before any other functions.
+
+**Parameters**:
+- `config` (IN): Pointer to initialization configuration structure. Must be non-NULL and fully populated.
+
+**Return Value**:
+- `ACR_OK` (0): Initialization successful
+- `ACR_ERROR_INIT` (-1): config is NULL, server_url is empty, or required fields are missing
+- `ACR_ERROR_AUDIO` (-4): ALSA initialization failed (audio not available)
+
+**Thread Safety**: Not thread-safe. Call from main thread before starting any other threads.
+
+**Example**:
+```c
+acr_config_t config = {
+    .api_key = "your-api-key",
+    .server_url = "https://ingest.acraas.io/v1",
+    .capture_interval_sec = 30,
+    .max_cache_size = 500,
+};
+
+int ret = acr_init(&config);
+assert(ret == ACR_OK);
+```
+
+### acr_start()
+
+**Purpose**: Begin audio capture and fingerprint processing.
+
+**Parameters**: None
+
+**Return Value**:
+- `ACR_OK` (0): Capture started successfully
+- `ACR_ERROR_CONSENT` (-3): Called when consent is false
+- `ACR_ERROR_NETWORK` (-2): Cannot establish connection to server
+
+**Thread Safety**: Thread-safe. Can be called from any thread.
+
+**Notes**: 
+- Cannot be called before `acr_init()`.
+- Returns immediately; does not block for network connectivity.
+- No effect if already running.
+
+**Example**:
+```c
+int ret = acr_start();
+if (ret != ACR_OK) {
+    fprintf(stderr, "acr_start failed: %d\n", ret);
+}
+```
+
+### acr_stop()
+
+**Purpose**: Stop audio capture and cleanup resources.
+
+**Parameters**: None
+
+**Return Value**:
+- `ACR_OK` (0): Successfully stopped
+- Other codes: Rarely returned; function is designed to always succeed
+
+**Thread Safety**: Thread-safe.
+
+**Notes**:
+- Safe to call even if not running
+- Allows pending batches to complete before shutdown
+- Does NOT purge local cache (use separately if needed)
+
+**Example**:
+```c
+acr_stop();
+```
+
+### acr_set_consent(bool consented)
+
+**Purpose**: Update user consent status. Must be called BEFORE acr_start().
+
+**Parameters**:
+- `consented` (IN): true to enable capture, false to disable
+
+**Return Value**:
+- `ACR_OK` (0): Consent updated successfully
+
+**Thread Safety**: Thread-safe.
+
+**Notes**:
+- Critical: Call before `acr_start()` for proper initialization
+- Can be called at runtime to toggle capture on/off
+- When set to false, stops capture and purges local cache
+
+**Example**:
+```c
+// Set consent before starting
+acr_set_consent(true);
+acr_start();
+
+// Later, user changes settings
+acr_set_consent(false);  // Stops and purges
+```
+
+### acr_flush()
+
+**Purpose**: Force flush any pending fingerprints to the cloud immediately, without waiting for the batch timeout.
+
+**Parameters**: None
+
+**Return Value**:
+- `ACR_OK` (0): Flush completed (or nothing to flush)
+- `ACR_ERROR_NETWORK` (-2): Network error during flush
+
+**Thread Safety**: Thread-safe, but blocks until network operation completes.
+
+**Notes**:
+- Useful during shutdown or app backgrounding
+- Automatically called periodically by the SDK (no need to call manually)
+- Safe to call even if no data pending
+
+**Example**:
+```c
+// Before shutdown
+acr_stop();
+acr_flush();  // Ensure all data reaches server
+acr_deinit();
+```
+
+### acr_get_device_id(char *buffer, size_t buffer_size)
+
+**Purpose**: Get the stable, anonymized device ID used by ACRaaS for this device.
+
+**Parameters**:
+- `buffer` (OUT): Pointer to character buffer to receive device ID
+- `buffer_size` (IN): Size of buffer (should be ≥ 256 bytes)
+
+**Return Value**:
+- `ACR_OK` (0): Device ID written to buffer
+- `ACR_ERROR_INIT` (-1): SDK not initialized yet
+
+**Thread Safety**: Thread-safe.
+
+**Notes**:
+- Device ID is stable across reboots (persisted in SQLite)
+- Same ID will be sent to all requests from this device
+- Use this only for debugging/logging; do NOT transmit to third parties
+
+**Example**:
+```c
+char device_id[256];
+int ret = acr_get_device_id(device_id, sizeof(device_id));
+if (ret == ACR_OK) {
+    printf("Device ID: %s\n", device_id);
+}
+```
+
+---
+
+## 7. Configuration Reference
+
+The `acr_config_t` structure controls SDK behavior. All fields are required except those marked optional.
+
+```c
+typedef struct {
+    const char *api_key;              // REQUIRED: from portal.acraas.io
+    const char *server_url;           // REQUIRED: ingest.acraas.io/v1 or sandbox
+    const char *device_model;         // REQUIRED: TV model string (e.g., "Samsung QN85Q90A")
+    const char *manufacturer;         // REQUIRED: TV manufacturer (e.g., "Samsung")
+    
+    int capture_interval_sec;         // REQUIRED: secs between captures (default: 30)
+    int max_cache_size;               // REQUIRED: max fingerprints to store (default: 500)
+    int batch_size;                   // OPTIONAL: fingerprints per batch (default: 20)
+    int batch_timeout_sec;            // OPTIONAL: max secs to wait before batch (default: 60)
+    
+    const char *audio_device;         // OPTIONAL: ALSA device name (default: "default")
+    int sample_rate_hz;               // OPTIONAL: audio sample rate (default: 8000)
+    bool enable_logging;              // OPTIONAL: verbose logging to stderr (default: false)
+} acr_config_t;
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `api_key` | string | YES | none | API key from developer portal (40-64 chars) |
+| `server_url` | string | YES | none | `https://ingest.acraas.io/v1` for prod, `https://ingest-sandbox.acraas.io/v1` for testing |
+| `device_model` | string | YES | none | Exact TV model string for revenue attribution |
+| `manufacturer` | string | YES | none | Manufacturer name (e.g., "Samsung", "LG", "Sony") |
+| `capture_interval_sec` | int | YES | 30 | Seconds between 3-second audio captures. Lower = more data but higher CPU. Valid: 10-300 |
+| `max_cache_size` | int | YES | 500 | Maximum fingerprints to store locally. Valid: 100-2000 |
+| `batch_size` | int | NO | 20 | Fingerprints to batch before sending. Valid: 1-100 |
+| `batch_timeout_sec` | int | NO | 60 | Max seconds to wait before sending incomplete batch. Valid: 10-300 |
+| `audio_device` | string | NO | "default" | ALSA device name (e.g., "default", "hw:0,0", "hdmi") |
+| `sample_rate_hz` | int | NO | 8000 | Audio sample rate in Hz. Valid: 8000, 16000 |
+| `enable_logging` | bool | NO | false | Enable debug logging to stderr |
+
+---
+
+## 8. Privacy & Compliance
+
+### 8.1 What ACRaaS Collects
+
+ACRaaS collects only the minimum data required to provide audience measurement:
+
+1. **Audio Fingerprint Hash (256-bit SHA-256)**
+   - Generated by FFT analysis of 3-second audio samples
+   - One-way cryptographic hash; cannot be reversed to audio
+   - Deterministic: same audio always produces same hash
+   - Matches against 50M+ TV episodes/movies in cloud database
+
+2. **Anonymized Device ID (SHA-256 hash with rotation)**
+   - Derived from hardware identifiers (serial, MAC prefix, chipset ID)
+   - Salted with per-device random value
+   - Changed monthly to prevent tracking over long periods
+   - Same device in month 1 has different ID in month 2
+
+3. **IP Prefix (first 24 bits, not full IP)**
+   - Example: device at 192.168.1.50 sends only "192.168.1.x"
+   - Used for DMA/region inference only
+   - Full IP address is never sent to ACRaaS servers
+
+4. **Timestamp (rounded to nearest minute, UTC-only)**
+   - Recording when fingerprint was captured
+   - Rounded to 1-minute granularity for privacy
+   - UTC timezone only; no device timezone tracking
+
+5. **Device Metadata (manufacturer, model)**
+   - Strings like "Samsung QN85Q90A", "LG OLED55C3"
+   - Used for revenue attribution and demographic inference
+
+### 8.2 What ACRaaS NEVER Collects
+
+**Explicitly excluded**:
+- Raw audio data (audio stream never sent to servers)
+- Full MAC address (only vendor prefix, e.g., "00:1A:2B")
+- Full IP address (only /24 prefix; host bits discarded)
+- User names, email addresses, or account IDs
+- GPS location or precise geolocation
+- Household member information or relationships
+- App usage or app store data (only TV content)
+- Closed captions, metadata, or content descriptions
+- Video, images, or screen captures
+- Firmware version numbers or detailed device specs
+- DNS queries or browsing history
+- Browser cookies or tracking IDs
+
+### 8.3 Consent Requirements by Jurisdiction
+
+Consent requirements vary by regulation. Manufacturers must ensure proper consent before starting ACRaaS.
+
+| Jurisdiction | Regulation | Requirement | Enforcement |
+|---|---|---|---|
+| **United States** | CCPA (California Consumer Privacy Act) | Opt-out: Can collect by default, user can opt out | Enforced by CA Attorney General |
+| **European Union** | GDPR (General Data Protection Regulation) | Opt-in: REQUIRED before any collection. Consent form must be clear, granular, and freely given | Enforced by national DPAs; fines up to €20M or 4% of revenue |
+| **Canada** | PIPEDA (Personal Information Protection and Electronic Documents Act) | Opt-in: Consent required before collection. Must explain purpose clearly | Enforced by Privacy Commissioner of Canada |
+| **United Kingdom** | UK GDPR (UK implementation of GDPR) | Opt-in: Same as EU GDPR. Must obtain clear affirmative consent | Enforced by ICO (Information Commissioner's Office) |
+| **Brazil** | LGPD (Lei Geral de Proteção de Dados) | Opt-in for non-essential processing. Requires purpose disclosure | Enforced by ANPD (Autoridade Nacional de Proteção de Dados) |
+
+**Best Practice**: Implement an opt-in consent model globally. This satisfies the strictest jurisdictions and builds user trust.
+
+### 8.4 Children's Privacy (COPPA / Age-Gating)
+
+If your TV app serves children (under 13 in US, under 16 in EU), special protections apply.
+
+**ACRaaS Automatic Protections**:
+- If household is marked as "kids household", all behavioral targeting is disabled
+- Only basic content matching is performed (no audience segmentation)
+- No revenue is generated from kids households
+- Manufacturers should pass `household_type: "kids"` in config if available
+
+**To mark a household as kids**:
+```c
+acr_config_t config = {
+    .household_type = "kids",  // Disables all targeting and revenue
+    // ... other config
+};
+```
+
+**For manufacturers without kids detection**: Set household_type only if explicitly detected. Defaulting to "general" is acceptable.
+
+### 8.5 Data Deletion & User Rights
+
+ACRaaS supports the following data subject rights:
+
+1. **Right to Access**: Users can request export of their collected data
+2. **Right to Deletion**: Users can request purge of all their data
+3. **Right to Opt-Out**: Users can disable collection at any time
+
+**Implementation**:
+```c
+// User opts out (local SDK stop)
+acr_set_consent(false);  // Stops capture, purges local cache
+
+// For cloud-level deletion, call API endpoint
+curl -X POST https://api.acraas.io/v1/privacy/erase \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id": "abc123"}'
+```
+
+---
+
+## 9. Performance Characteristics
+
+ACRaaS is designed for embedded TV devices with limited CPU and RAM. All measurements below are on a Samsung TV with ARM Cortex-A53 (1GHz), 1.5GB RAM.
+
+### CPU Usage
+
+- **Idle**: < 0.1% CPU (sleeping, waiting for next capture)
+- **During Capture** (3 seconds): ~8-12% CPU on single core
+- **Average Over Time**: < 2% CPU (since captures are only 10% duty cycle: 3 sec capture every 30 sec)
+- **Network Upload** (batch send): < 1% CPU
+
+**Conclusion**: ACRaaS has negligible impact on TV performance. Your main TV UI will not stutter.
+
+### Memory Usage
+
+- **Peak RAM**: ~8MB (during fingerprint computation)
+- **Baseline RAM**: ~2MB (persistent processes)
+- **SQLite Cache**: ~5MB (500 fingerprints at ~10KB each)
+- **Total Maximum**: ~13MB
+
+**Devices with < 256MB RAM available**: May see minor issues. Contact support for tuning.
+
+### Disk I/O
+
+- **SQLite Writes**: ~10 writes per minute (one fingerprint per ~6 seconds)
+- **WAL Mode**: Enabled for crash safety; minimal fsync overhead
+- **Disk Space**: ~5MB for SDK binary + 10MB for SQLite cache = 15MB total
+
+### Network Bandwidth
+
+- **Per Fingerprint**: ~40 bytes compressed (header: 12 bytes, hash: 32 bytes, timestamp: 4 bytes, etc.)
+- **Batch of 20**: ~800 bytes total (with headers and TLS overhead)
+- **Per Minute**: ~1KB total (batch sent every 60 seconds on average)
+- **Per Hour**: ~60KB
+- **Per Day**: ~1.4MB
+- **Per Month**: ~40MB
+
+**Cellular Impact**: If TV has cellular backup connectivity (rare), monthly data usage is minimal (~40MB).
+
+### Audio Capture Characteristics
+
+- **Sample Duration**: 3 seconds per capture
+- **Sample Frequency**: Every 30 seconds (configurable 10-300 seconds)
+- **Duty Cycle**: 3sec capture every 30sec = 10% of time
+- **Sample Rate**: 8kHz (configurable to 16kHz for higher accuracy)
+- **Latency**: < 50ms from capture to fingerprint hash (on-device)
+
+---
+
+## 10. Testing & Verification
+
+### Sandbox Environment
+
+ACRaaS provides a sandbox (non-production) environment for integration testing:
+
+```c
+acr_config_t config = {
+    .api_key = "test-sandbox-key",
+    .server_url = "https://ingest-sandbox.acraas.io/v1",  // Sandbox, not production
+    .capture_interval_sec = 10,  // Faster in testing
+    // ... other fields
+};
+
+acr_init(&config);
+```
+
+**Sandbox characteristics**:
+- Separate database (does not affect production)
+- Fingerprints expire after 24 hours (not archived)
+- No revenue calculations
+- API requests rate-limited generously
+
+### Verifying the SDK is Working
+
+After starting ACRaaS on your TV:
+
+1. **Check Dashboard**: Log in to https://portal.acraas.io/manufacturers
+2. **Find Your Device**: Look for your device model in the "Connected Devices" list
+3. **Timeline**: Device should appear within 5 minutes of calling `acr_start()`
+4. **Fingerprint Count**: Should increase ~2 per minute (one every 30 seconds)
+
+If device doesn't appear:
+- Verify API key is correct
+- Check network connectivity (try `curl https://ingest.acraas.io/v1/health`)
+- Enable debug logging with `enable_logging: true`
+
+### Debug Logging
+
+Enable verbose output to stderr:
+
+```c
+acr_config_t config = {
+    .enable_logging = true,  // Enable debug logging
+    // ... other fields
+};
+
+acr_init(&config);
+```
+
+**Log output example**:
+```
+[ACR] 2026-04-10 14:23:45 Initializing ACRaaS SDK v1.0.0
+[ACR] 2026-04-10 14:23:45 ALSA device 'default' opened at 8000 Hz
+[ACR] 2026-04-10 14:23:45 SQLite cache initialized: 0 fingerprints in DB
+[ACR] 2026-04-10 14:23:45 User consent: true
+[ACR] 2026-04-10 14:23:50 Captured audio sample (3 sec), fingerprint: abc123def456...
+[ACR] 2026-04-10 14:23:50 Stored fingerprint in cache (1 total)
+[ACR] 2026-04-10 14:24:45 Captured audio sample, fingerprint: xyz789...
+[ACR] 2026-04-10 14:24:50 Batch ready (2 fingerprints), sending to server...
+[ACR] 2026-04-10 14:24:51 Batch sent successfully, 0 fingerprints in cache
+```
+
+---
+
+## 11. Revenue Share Program
+
+The ACRaaS revenue model aligns incentives: you earn money when your devices generate valuable data insights.
+
+### Revenue Calculation
+
+**Monthly Revenue = Sum of (Device Data Points × Segment Price)**
+
+- **Device Data Points**: Number of valid fingerprints captured (each unique audio sample = 1 data point)
+- **Segment Price**: ACRaaS auctions audience segments to advertisers. Prices vary by segment quality and demand (typical range: $0.02-$0.50 per data point)
+
+Example:
+- Device A captures 100,000 fingerprints in March
+- ACRaaS prices those fingerprints at average $0.10 per point
+- Total revenue: 100,000 × $0.10 = $10,000
+- Your share (30%): $3,000
+
+### Accessing Revenue Reports
+
+Log in to https://portal.acraas.io/manufacturers to view:
+- Daily fingerprint counts by device model
+- Estimated revenue by day/week/month
+- Payout status and payment history
+- Historical revenue trends
+
+### Payment & Payout
+
+- **Currency**: USD
+- **Payment Method**: Stripe (bank transfer, ACH, or wire)
+- **Frequency**: Monthly (15th of each month for prior month's revenue)
+- **Minimum Threshold**: $500/month (if below threshold, balance rolls to next month)
+- **Terms**: Net-30 (invoice issued on 15th, payment due 30 days later)
+- **Tax**: ACRaaS will issue Form 1099-NEC for US manufacturers (if >= $600 annual revenue)
+
+### Example Payout Schedule
+
+```
+Period: January 2026
+Data Points: 50M fingerprints
+Avg Price: $0.15/point
+Gross Revenue: 50M × $0.15 = $7.5M
+Your Share (30%): $2.25M
+Payment Date: February 15, 2026
+```
+
+---
+
+## 12. Troubleshooting
+
+### Common Errors and Solutions
+
+| Error Code | Error Name | Cause | Solution |
+|---|---|---|---|
+| `-1` | `ACR_ERROR_INIT` | Config is NULL, server_url empty, or required fields missing | Check all required config fields are set; verify no nulls |
+| `-2` | `ACR_ERROR_NETWORK` | Cannot reach ingest.acraas.io:443 | Check firewall, DNS, internet connectivity |
+| `-3` | `ACR_ERROR_CONSENT` | `acr_start()` called with consent=false | Call `acr_set_consent(true)` before `acr_start()` |
+| `-4` | `ACR_ERROR_AUDIO` | ALSA device not found or permission denied | Verify ALSA is installed; check device name; run as root if needed |
+
+### Issue: SDK Initializes But Returns Immediately
+
+**Symptoms**: `acr_init()` succeeds, `acr_start()` succeeds, but no data appears in dashboard after 5 minutes.
+
+**Diagnostics**:
+1. Enable debug logging: `enable_logging: true`
+2. Check logs for "ALSA device opened" message
+3. Check if fingerprints are being captured: look for "Captured audio sample" log lines
+4. Check if fingerprints are being sent: look for "Batch sent successfully"
+
+**Causes and fixes**:
+- **Wrong API key**: Verify in portal.acraas.io/settings
+- **Wrong server URL**: Should be `https://ingest.acraas.io/v1` (not http://, no trailing slash)
+- **Firewall blocking**: Verify outbound HTTPS to ingest.acraas.io:443 is allowed
+- **ALSA not available**: Try `audio_device: "hw:0,0"` or check ALSA installation
+
+### Issue: High CPU Usage (> 5%)
+
+**Symptoms**: TV feels sluggish, CPU monitor shows ACRaaS using 5%+ CPU consistently.
+
+**Causes**:
+- `capture_interval_sec` too low (default 30 is fine; 5 would be high)
+- Multiple ACRaaS instances running (check for duplicate `acr_init()` calls)
+
+**Solutions**:
+1. Increase `capture_interval_sec` from 30 to 60 seconds
+2. Reduce `sample_rate_hz` from 16kHz to 8kHz
+3. Check for duplicate SDK initializations
+
+---
+
+## 13. Support & SLA
+
+### Support Channels
+
+| Issue Type | Contact | Response SLA |
+|---|---|---|
+| SDK integration/technical questions | sdk-support@acraas.io | 24 hours |
+| Manufacturer portal issues | portal-support@acraas.io | 24 hours |
+| Emergency (production outage) | +1-800-ACR-AAAS (emergency hotline) | 2 hours |
+| Billing/payment issues | billing@acraas.io | 48 hours |
+
+### Service Level Agreement (SLA)
+
+- **API Availability**: 99.9% uptime (ingest.acraas.io)
+- **Measurement**: Measured monthly, excluding planned maintenance (first Sunday 2-4am UTC)
+- **Data Processing**: Fingerprints processed and matched within 5 minutes (99th percentile)
+- **Revenue Reporting**: Updated daily by 11am UTC
+
+### Escalation Path
+
+1. **Level 1**: Email support (first response within 24 hours)
+2. **Level 2**: Technical account manager (escalated on day 2 if unresolved)
+3. **Level 3**: Engineering team (escalated on day 5 if unresolved)
+4. **Emergency**: Call +1-800-ACR-AAAS for production outages requiring immediate attention
+
+---
+
+**Document Version**: 1.0  
+**Last Updated**: April 2026  
+**Copyright**: ACRaaS Platform  
+**Contact**: sdk-support@acraas.io
+
+## Prerequisites
+
+### Operating System & Hardware
+
+The SDK supports the following platforms:
+
+| OS | Minimum Version | Devices |
+|---|---|---|
+| Tizen | 6.0 | Samsung Smart TVs |
+| webOS | 6.0 | LG Smart TVs |
+| Android TV | 9 (API 28) | Android TV boxes, Sony TVs |
+| Linux | Kernel 4.15+ | Set-top boxes, custom devices |
+
+### System Libraries
+
+Ensure these libraries are installed and available on your device:
+
+| Library | Min Version | Purpose |
+|---|---|---|
+| OpenSSL | 1.1.1+ | HTTPS/TLS encryption |
+| libcurl | 7.60+ | HTTP transport |
+| SQLite | 3.35+ | Local fingerprint caching |
+| ALSA | 1.1+ | Audio capture (Linux/Tizen) |
+| libpulse | 12+ | Audio capture (webOS) |
+| libc | glibc 2.28+ | C runtime |
+
+### Network Requirements
+
+- **Outbound HTTPS**: Device must reach `ingest.acraas.io` on port 443
+- **DNS**: Device must resolve `ingest.acraas.io` (or your custom ingest endpoint)
+- **Minimum bandwidth**: <1 KB/min during idle, up to 10 KB/min during active viewing
+- **No inbound**: SDK does not require inbound connections
+
+### Development Requirements
+
+- **Compiler**: GCC 7.0+ or Clang 5.0+
+- **CMake**: 3.10+ (for Linux/Tizen builds)
+- **Android SDK**: API 28+ (for Android TV)
+- **Gradle**: 7.0+ (for Android TV)
+
+---
+
+## SDK Distribution
+
+### Download
+
+The ACRaaS SDK is distributed as a pre-compiled binary package via CDN:
+
+```bash
+# Download latest stable release
+curl -O https://sdk.acraas.io/releases/libacraas-v1.2.0.tar.gz
+
+# Verify checksum
+sha256sum -c libacraas-v1.2.0.tar.gz.sha256
+```
+
+### Package Contents
+
+```
+libacraas-v1.2.0/
+├── include/
+│   └── acr.h              # Main header file
+├── lib/
+│   ├── libarc.so          # Shared library (Linux/Android)
+│   ├── libarc.a           # Static library (optional)
+│   └── acraas.framework   # iOS/macOS framework (if supported)
+├── examples/
+│   ├── tizen_example.c
+│   ├── webos_example.c
+│   ├── android_example.java
+│   └── linux_example.c
+├── LICENSE
+├── CHANGELOG
+└── README.md
+```
+
+### Versioning Scheme
+
+ACRaaS SDK uses semantic versioning: `MAJOR.MINOR.PATCH`
+
+- **MAJOR**: Breaking API changes (rare)
+- **MINOR**: New features, backward compatible
+- **PATCH**: Bug fixes
+
+Current stable: `v1.2.0` (released 2026-04-01)
+
+---
+
+## Build Integration
+
+### Linux/Tizen with CMake
+
+Add to your project's `CMakeLists.txt`:
+
+```cmake
+# Find ACRaaS SDK
+find_package(ACRaaS 1.2 REQUIRED)
+
+# Link to your target
+target_link_libraries(my_app PRIVATE ACRaaS::acraas)
+
+# Include headers
+target_include_directories(my_app PRIVATE ${ACRAAS_INCLUDE_DIRS})
+```
+
+Or manually:
+
+```cmake
+# Set ACRaaS path
+set(ACRAAS_ROOT "/opt/acraas-sdk")
+
+# Add include directory
+include_directories(${ACRAAS_ROOT}/include)
+
+# Add library
+link_directories(${ACRAAS_ROOT}/lib)
+target_link_libraries(my_app acraas)
+
+# Link dependencies
+target_link_libraries(my_app curl ssl crypto sqlite3 pthread)
+```
+
+### webOS Integration
+
+For webOS devices, integrate into your package:
+
+```bash
+# Copy SDK files
+cp -r libacraas-v1.2.0/lib/webos/* your_app/lib/
+
+# In your webOS appinfo.json
+{
+  "id": "com.example.myapp",
+  "version": "1.0.0",
+  "vendor": "Example Corp",
+  "type": "native",
+  "main": "myapp",
+  "requiredPermissions": [
+    "devinfo.get",
+    "audio.capture",
+    "network.interface"
+  ]
+}
+```
+
+### Android TV with Gradle
+
+Add JNI bindings to `build.gradle`:
+
+```gradle
+android {
+    compileSdk 33
+    
+    defaultConfig {
+        applicationId "com.example.myapp"
+        minSdkVersion 28
+        targetSdkVersion 33
+        
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+    
+    buildFeatures {
+        aidl true
+    }
+}
+
+dependencies {
+    // ACRaaS SDK (available via Maven Central)
+    implementation 'io.acraas:sdk-android:1.2.0'
+}
+```
+
+In your `build.gradle` (project level):
+
+```gradle
+repositories {
+    mavenCentral()
+    maven {
+        url "https://maven.acraas.io/releases"
+        credentials {
+            username = System.getenv("ACRAAS_MAVEN_USER")
+            password = System.getenv("ACRAAS_MAVEN_PASS")
+        }
+    }
+}
+```
+
+---
+
+## Integration Steps
+
+### Step 1: Include Header
+
+```c
+#include <acr.h>
+
+// Link against: -lacraas -lcurl -lssl -lcrypto -lsqlite3
+```
+
+### Step 2: Get User Consent BEFORE Initializing
+
+**IMPORTANT**: The SDK will NOT function without explicit user consent. This is a legal requirement.
+
+```c
+// Example: Check your CMP (Consent Management Platform)
+bool user_consented = your_cmp_get_consent("acraas");
+
+if (!user_consented) {
+    // Show consent dialog
+    bool accepted = your_ui_show_consent_dialog(
+        "Allow us to capture and analyze content you watch? "
+        "This helps us deliver better content."
+    );
+    user_consented = accepted;
+    
+    // Store consent preference
+    your_cmp_set_consent("acraas", user_consented);
+}
+
+if (!user_consented) {
+    // SDK will not be initialized or used
+    return;
+}
+```
+
+### Step 3: Configure and Initialize
+
+```c
+#include <acr.h>
+#include <stdio.h>
+
+int main() {
+    // Configure SDK
+    acr_config_t cfg = {
+        // Required: API key provided by ACRaaS
+        .api_key = "mfr_key_YOUR_MANUFACTURER_KEY",
+        
+        // Required: Server URL (use provided endpoint)
+        .server_url = "https://ingest.acraas.io/v1",
+        
+        // Optional: Custom device ID (recommended)
+        // If not set, SDK generates one from MAC address
+        .device_id = "device_uuid_12345",
+        
+        // Optional: Batch configuration
+        .batch_size = 20,           // Fingerprints per batch
+        .flush_interval_sec = 60,   // Send batch if older than 60s
+        
+        // Optional: Audio capture config
+        .audio_device = "default",  // ALSA device or "auto"
+        .sample_rate = 16000,       // Hz
+        .channels = 1,              // Mono is sufficient
+        
+        // Optional: Storage config
+        .cache_dir = "/var/acraas", // Local fingerprint cache
+        .max_cache_size_mb = 10,
+        
+        // Optional: Logging
+        .log_level = ACR_LOG_INFO,
+        .log_file = "/var/log/acraas.log",
+        
+        // Optional: TLS/SSL config
+        .ca_bundle_path = "/etc/ssl/certs/ca-bundle.crt",
+        .verify_ssl = true,
+        
+        // Optional: Proxy
+        .http_proxy_url = NULL,  // Set if behind proxy
+    };
+    
+    // Initialize SDK
+    acr_error_t result = acr_init(&cfg);
+    
+    if (result != ACR_OK) {
+        fprintf(stderr, "Failed to initialize ACRaaS: %s\n", acr_error_string(result));
+        return 1;
+    }
+    
+    printf("ACRaaS initialized successfully\n");
+    
+    return 0;
+}
+```
+
+### Step 4: Set Consent
+
+After initialization, explicitly set the user's consent status:
+
+```c
+// Set initial consent state
+acr_error_t result = acr_set_consent(user_consented);
+if (result != ACR_OK) {
+    fprintf(stderr, "Failed to set consent: %s\n", acr_error_string(result));
+}
+
+// If user changes consent later (e.g., in settings)
+void on_user_changed_consent(bool new_consent_value) {
+    acr_error_t result = acr_set_consent(new_consent_value);
+    if (!new_consent_value) {
+        // User opted out - SDK will stop capturing and remove cached data
+        printf("User opted out. ACRaaS is now inactive.\n");
+    }
+}
+```
+
+### Step 5: Start SDK
+
+```c
+// Start capturing and sending fingerprints
+acr_error_t result = acr_start();
+
+if (result != ACR_OK) {
+    fprintf(stderr, "Failed to start ACRaaS: %s\n", acr_error_string(result));
+    return 1;
+}
+
+printf("ACRaaS started. Capturing fingerprints...\n");
+
+// SDK runs in background thread
+// Your application continues normally
+
+// Later, when application exits or you want to stop:
+acr_stop();
+acr_cleanup();
+```
+
+### Complete Example
+
+```c
+#include <acr.h>
+#include <stdio.h>
+#include <signal.h>
+#include <unistd.h>
+
+static volatile int keep_running = 1;
+
+void signal_handler(int sig) {
+    keep_running = 0;
+    printf("\nShutting down ACRaaS...\n");
+}
+
+int main() {
+    signal(SIGINT, signal_handler);
+    
+    // Step 2: Get consent
+    bool user_consented = true;  // In real app, check CMP
+    
+    if (!user_consented) {
+        fprintf(stderr, "User has not consented. Exiting.\n");
+        return 1;
+    }
+    
+    // Step 3: Configure
+    acr_config_t cfg = {
+        .api_key = "mfr_key_YOUR_KEY",
+        .server_url = "https://ingest.acraas.io/v1",
+        .device_id = "my_device_001",
+        .batch_size = 20,
+        .flush_interval_sec = 60,
+        .log_level = ACR_LOG_INFO,
+    };
+    
+    // Initialize
+    if (acr_init(&cfg) != ACR_OK) {
+        fprintf(stderr, "Failed to init ACRaaS\n");
+        return 1;
+    }
+    
+    // Step 4: Set consent
+    if (acr_set_consent(user_consented) != ACR_OK) {
+        fprintf(stderr, "Failed to set consent\n");
+        return 1;
+    }
+    
+    // Step 5: Start
+    if (acr_start() != ACR_OK) {
+        fprintf(stderr, "Failed to start ACRaaS\n");
+        return 1;
+    }
+    
+    printf("ACRaaS running. Press Ctrl+C to stop.\n");
+    
+    // Keep application running
+    while (keep_running) {
+        sleep(1);
+    }
+    
+    // Cleanup
+    acr_stop();
+    acr_cleanup();
+    
+    printf("ACRaaS stopped.\n");
+    return 0;
+}
+```
+
+---
+
+## Consent Management
+
+### Legal Requirements
+
+ACRaaS requires explicit, informed user consent before any data collection. This is mandatory under:
+
+- **GDPR** (EU): Legitimate interest insufficient; requires active consent
+- **CCPA** (California): Requires opt-in for data sales
+- **PIPEDA** (Canada): Requires consent for collection and use
+- **Privacy laws**: Various countries require consent for biometric data collection
+
+### Integration with CMP (Consent Management Platform)
+
+Your device should integrate with a CMP to manage consent:
+
+```c
+// Example: Using OneTrust CMP API
+#include "onetrust_cmp.h"
+#include <acr.h>
+
+bool get_acraas_consent() {
+    // Get consent from CMP
+    const char* consent_string = ot_get_tcf_consent_string();
+    
+    // Check if "ACRaaS" vendor has consent
+    bool has_consent = ot_has_vendor_consent("acraas", consent_string);
+    
+    return has_consent;
+}
+
+void on_consent_changed(const char* new_consent_string) {
+    // User changed consent in settings
+    bool now_consented = ot_has_vendor_consent("acraas", new_consent_string);
+    
+    // Update SDK
+    acr_set_consent(now_consented);
+    
+    if (!now_consented) {
+        printf("ACRaaS consent withdrawn. Data collection stopped.\n");
+    }
+}
+```
+
+### User-Facing Consent Flow
+
+Your app should display clear consent messaging:
+
+```c
+typedef struct {
+    const char* title;
+    const char* description;
+    const char* vendor_name;
+    const char* privacy_url;
+} acr_consent_dialog_t;
+
+acr_consent_dialog_t consent_info = {
+    .title = "Content Recognition",
+    .description = "Synora analyzes the content you watch to show relevant ads. "
+                  "This data is encrypted and protected. You can change this anytime.",
+    .vendor_name = "Synora ACRaaS",
+    .privacy_url = "https://www.synora.io/privacy"
+};
+
+// Your UI code
+bool user_accepted = show_consent_dialog(&consent_info);
+
+if (user_accepted) {
+    acr_set_consent(true);
+    // Start fingerprinting
+} else {
+    acr_set_consent(false);
+    // Don't start fingerprinting
+}
+```
+
+### Handling Consent Changes
+
+The SDK must respond immediately to consent changes:
+
+```c
+// Callback when user revokes consent (e.g., in device settings)
+void on_user_revokes_consent() {
+    // Stop capturing
+    acr_set_consent(false);
+    
+    // SDK will:
+    // 1. Stop capturing audio immediately
+    // 2. Flush any pending data (if still consented)
+    // 3. Delete local cache of fingerprints
+    // 4. Mark device as opted-out in backend
+}
+
+void on_user_grants_consent() {
+    // Resume capturing
+    acr_set_consent(true);
+    
+    // SDK will:
+    // 1. Resume audio capture
+    // 2. Start fingerprinting and sending
+}
+```
+
+---
+
+## Privacy Requirements
+
+### What Data Is Collected
+
+The SDK collects:
+1. **Audio fingerprints** (64-bit hashes): Mathematical representations of audio
+2. **Device metadata**: Device ID, network IP (used for household grouping)
+3. **Timestamp**: When fingerprint was generated (no finer than 1-minute granularity)
+
+### What Data Is NOT Collected
+
+- **Raw audio**: Never transmitted, only 64-bit hash
+- **Personal information**: Names, addresses, phone numbers
+- **Browsing history**: Unless explicitly part of the fingerprint
+- **Location data**: Beyond IP-based household grouping
+- **User identifiers**: No cookies, logins, or account data
+
+### Anonymization
+
+Device IDs are anonymized:
+
+```
+User's TV MAC: 00:1A:2B:3C:4D:5E
+              ↓ (SHA256 hash)
+Device ID:    a1b2c3d4e5f6...  (64 hex chars, one-way hash)
+```
+
+The device ID cannot be reversed to identify the MAC address.
+
+### Data Retention
+
+- **Raw fingerprints**: 7 days (for matching)
+- **Match results**: 90 days
+- **Aggregated analytics**: 2 years
+- **User opt-outs**: Permanent
+
+### Data Security
+
+- **Transport**: TLS 1.2+ encryption (HTTPS)
+- **Storage**: Encrypted at rest (AES-256)
+- **Access**: Role-based access control (RBAC)
+- **Audit logs**: All data access logged
+
+---
+
+## Performance Characteristics
+
+### CPU Usage
+
+| State | Usage |
+|---|---|
+| Idle (no audio) | <0.1% |
+| Capturing/fingerprinting | <1.5% |
+| Sending batch | <0.5% |
+| **Typical average** | **<0.8%** |
+
+### Memory Usage
+
+| Component | Size |
+|---|---|
+| Runtime heap | 2-4 MB |
+| Audio buffer | 2 MB |
+| Local cache | 1-2 MB |
+| **Total** | **<8 MB** |
+
+### Network Usage
+
+| Scenario | Bandwidth |
+|---|---|
+| Idle (no content) | 0 KB/min |
+| Typical viewing (20 fingerprints/min) | 0.5-1 KB/min |
+| Heavy viewing | 2-5 KB/min |
+| **Average** | **<1 KB/min** |
+
+### Latency
+
+- **Fingerprint generation**: <100 ms per fingerprint
+- **Batch send**: <200 ms
+- **Total end-to-end**: <1 second per minute of viewing
+
+### Startup Time
+
+- **First run**: 2-3 seconds
+- **Subsequent runs**: <500 ms
+
+---
+
+## Testing Integration
+
+### Test Mode
+
+To test without sending real data to production:
+
+```c
+acr_config_t cfg = {
+    .api_key = "test_key_xyz",
+    .server_url = "http://localhost:8080/v1",  // Local test server
+    .test_mode = true,  // Enable test mode
+    // ... other config
+};
+
+acr_init(&cfg);
+```
+
+### Verifying SDK is Working
+
+```bash
+# Check logs
+tail -f /var/log/acraas.log
+
+# Expected output:
+# [INFO] ACRaaS initialized: device_id=abc123def456
+# [INFO] Audio device: hw:0,0 (48000 Hz, stereo)
+# [INFO] Connected to ingest.acraas.io
+# [INFO] Capturing fingerprints
+# [INFO] Batch ready (20 fingerprints), sending...
+# [INFO] Batch accepted (HTTP 202)
+```
+
+### Health Check Endpoint
+
+```bash
+# Your app should expose health status
+curl http://localhost:9090/health
+
+# Response:
+# {
+#   "acraas_status": "running",
+#   "fingerprints_sent": 1250,
+#   "last_successful_send": "2026-04-10T14:30:45Z",
+#   "consent_status": true
+# }
+```
+
+### Testing with Docker
+
+```bash
+# Start local test infrastructure
+docker-compose up -d
+
+# Run integration tests
+pytest tests/integration/test_sdk.py -v
+
+# Simulate content matching
+curl -X POST http://localhost:8082/v1/fingerprints/index \
+  -H "Content-Type: application/json" \
+  -d '{
+    "network": "espn",
+    "fingerprint": "abcd1234...",
+    "segment_ids": ["sports_fans"]
+  }'
+
+# Ingest fingerprint from your device
+curl -X POST http://localhost:8080/v1/fingerprints \
+  -H "X-API-Key: test_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "device_123...",
+    "fingerprints": [{
+      "network": "espn",
+      "fingerprint": "abcd1234...",
+      "timestamp": 1712761800
+    }]
+  }'
+
+# Verify in RTB lookup
+curl -X POST http://localhost:8084/v1/sync/openrtb \
+  -H "Authorization: Bearer test_token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device": {"id": "device_123..."}
+  }'
+```
+
+---
+
+## Troubleshooting
+
+### SDK fails to initialize
+
+**Error**: "Failed to initialize ACRaaS: Network error"
+
+**Solutions**:
+- Verify network connectivity: `ping ingest.acraas.io`
+- Check firewall allows HTTPS to `ingest.acraas.io:443`
+- Verify API key is correct
+- Check TLS certificates: `openssl s_client -connect ingest.acraas.io:443`
+
+### No fingerprints being sent
+
+**Error**: Log shows "Capturing fingerprints" but no "Batch accepted"
+
+**Solutions**:
+- Check audio device is correctly configured: `arecord -l`
+- Verify audio is actually being captured
+- Check network connectivity
+- Review logs for specific errors
+
+### High CPU usage
+
+**Error**: CPU usage >5%
+
+**Solutions**:
+- Reduce batch size: `.batch_size = 10`
+- Increase flush interval: `.flush_interval_sec = 120`
+- Check if device is under heavy load
+- Update to latest SDK version
+
+### High memory usage
+
+**Error**: Memory usage >20 MB
+
+**Solutions**:
+- Reduce local cache size: `.max_cache_size_mb = 5`
+- Reduce audio buffer size: `.audio_buffer_samples = 8000`
+- Restart application (memory leak suspected)
+- Update to latest SDK version
+
+### Consent not being respected
+
+**Error**: SDK sends data even after opting out
+
+**Solutions**:
+- Verify `acr_set_consent(false)` is being called
+- Check device storage isn't persisting old state
+- Verify backend opt-out was successful
+- Review privacy service logs
+
+### TLS/SSL certificate errors
+
+**Error**: "Certificate verification failed"
+
+**Solutions**:
+- Update system certificates: `update-ca-certificates`
+- Set correct CA bundle path: `.ca_bundle_path`
+- Disable cert verification (test only): `.verify_ssl = false`
+- Verify system time is correct
+
+### Device is rate limited
+
+**Error**: "HTTP 429 Too Many Requests"
+
+**Solutions**:
+- Increase batch size: `.batch_size = 50`
+- Decrease send frequency: `.flush_interval_sec = 120`
+- Contact Synora support for rate limit increase
+- Implement exponential backoff in error handling
+
+---
+
+## Revenue Share
+
+### How It Works
+
+ACRaaS generates revenue by sharing anonymized audience data with advertisers and DSPs:
+
+1. **Your device** captures fingerprints → identifies content → assigns segments
+2. **Advertisers** buy access to these segments for ad targeting
+3. **ACRaaS platform** generates revenue from these buys
+4. **You (manufacturer)** receive **30% of gross revenue** generated by your devices
+
+### Revenue Calculation
+
+```
+Gross Revenue (from ads) = $100,000 per month
+Synora's take = 70% = $70,000
+Manufacturer's share = 30% = $30,000
+```
+
+If you have 1 million devices, each contributing to audience data:
+- Average revenue per device per month: $0.03
+- Annual revenue per device: $0.36
+- Annual revenue for 1M devices: $360,000
+
+### Payment Terms
+
+- **Period**: Monthly
+- **Reporting**: Within 10 days of month-end
+- **Payment**: ACH transfer or wire (minimum $100)
+- **Payout cycle**: 45 days after invoice
+
+### Example Report
+
+```
+Synora Revenue Share Report
+Period: March 2026
+Manufacturer: Samsung TV
+----
+
+Device Summary:
+  Active devices: 1,234,567
+  Fingerprints processed: 45,678,901
+  Unique programs matched: 12,345
+
+Revenue Breakdown:
+  Segment A (Sports): $40,000
+  Segment B (News): $30,000
+  Segment C (Entertainment): $25,000
+  Segment D (Tech): $5,000
+  Total Revenue: $100,000
+
+Manufacturer Share (30%): $30,000
+Payout method: ACH to XX5678
+
+Next reporting: April 10, 2026
+```
+
+### Maximizing Revenue
+
+To maximize your revenue share:
+
+1. **Ensure consent**: Users are more likely to accept if benefits are clear
+2. **Accurate fingerprinting**: Better matches = more valuable segments
+3. **Device coverage**: Deploy on as many devices as possible
+4. **Content diversity**: More content types = more segments
+5. **Regular updates**: SDK updates improve accuracy
+
+### Transparent Reporting
+
+All revenue calculations are transparent:
+
+```bash
+# Access revenue dashboard
+curl https://api.acraas.io/v1/billing/revenue \
+  -H "Authorization: Bearer mfr_key_YOUR_KEY"
+
+# Response includes:
+# - Daily revenue
+# - Device-level contribution
+# - Segment breakdown
+# - Payout history
+```
+
+### Revenue Protection
+
+- **Fraud detection**: Flagged accounts are reviewed
+- **Quality checks**: Low-quality fingerprints are excluded from revenue
+- **Audit trails**: All transactions are logged
+- **Dispute resolution**: 30-day dispute window
+
+---
+
+## Support and Resources
+
+- **Documentation**: https://docs.acraas.io
+- **SDK Reference**: https://docs.acraas.io/sdk
+- **API Reference**: https://docs.acraas.io/api
+- **Status Page**: https://status.acraas.io
+- **Support**: support@synora.io
+- **Engineering**: engineering@synora.io
+
+## Changelog
+
+### v1.2.0 (2026-04-01)
+- Improved fingerprint accuracy (+5%)
+- Added ARM NEON optimization
+- Fixed ALSA device enumeration
+- Added Prometheus metrics export
+
+### v1.1.0 (2026-02-15)
+- WebOS support
+- Consent callback API
+- Local fingerprint caching
+- Rate limiting handling
+
+### v1.0.0 (2025-12-10)
+- Initial release
+- Linux/Tizen support
+- Basic fingerprinting
+- Batch API support
+
+---
+
+Last updated: 2026-04-10
+For the latest version, visit https://docs.acraas.io/sdk-integration

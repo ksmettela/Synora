@@ -1,0 +1,569 @@
+openapi: 3.0.0
+info:
+  title: Advertiser/DSP API
+  description: ACRaaS Advertiser API for DSP segment management and real-time targeting
+  version: "1.0.0"
+  contact:
+    name: ACRaaS Team
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: https://api.acraas.com/v1
+    description: Production
+  - url: http://localhost:8000/v1
+    description: Development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: advertiser-api
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /auth/token:
+    post:
+      summary: Get OAuth2 access token
+      description: Exchange client credentials for JWT access token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - grant_type
+                - client_id
+                - client_secret
+              properties:
+                grant_type:
+                  type: string
+                  example: client_credentials
+                client_id:
+                  type: string
+                  example: dsp_12345
+                client_secret:
+                  type: string
+                  example: secret_key
+                scope:
+                  type: string
+                  example: segments:read segments:write targeting:activate
+      responses:
+        "200":
+          description: Token created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: Bearer
+                  expires_in:
+                    type: integer
+                    example: 3600
+        "400":
+          description: Invalid request
+        "401":
+          description: Invalid credentials
+
+  /segments:
+    get:
+      summary: List all segments
+      tags:
+        - Segments
+      security:
+        - bearerAuth: [segments:read]
+      responses:
+        "200":
+          description: List of segments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  segments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SegmentResponse"
+        "401":
+          description: Unauthorized
+
+    post:
+      summary: Create new segment
+      description: Create a segment with JSON DSL rules
+      tags:
+        - Segments
+      security:
+        - bearerAuth: [segments:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SegmentDefinition"
+      responses:
+        "201":
+          description: Segment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentCreateResponse"
+        "400":
+          description: Invalid segment definition
+        "401":
+          description: Unauthorized
+
+  /segments/{segment_id}:
+    get:
+      summary: Get segment details
+      tags:
+        - Segments
+      security:
+        - bearerAuth: [segments:read]
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Segment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentResponse"
+        "404":
+          description: Segment not found
+        "401":
+          description: Unauthorized
+
+  /segments/{segment_id}/size:
+    get:
+      summary: Get segment size
+      description: Returns device and household count from Redis
+      tags:
+        - Segments
+      security:
+        - bearerAuth: [segments:read]
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Segment size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentSizeResponse"
+        "404":
+          description: Segment not found
+
+  /targeting/sync/openrtb:
+    post:
+      summary: Device segment lookup (RTB critical path)
+      description: >-
+        CRITICAL PATH endpoint. Returns matched segments for device in <5ms p99.
+        Checks Redis device hash, then IP household lookup.
+      tags:
+        - Targeting
+      security:
+        - bearerAuth: [targeting:read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenRTBLookupRequest"
+      responses:
+        "200":
+          description: Matched segments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenRTBLookupResponse"
+        "401":
+          description: Unauthorized
+
+  /targeting/activate:
+    post:
+      summary: Activate segment targeting
+      description: Validate CPM floor and record activation for billing
+      tags:
+        - Targeting
+      security:
+        - bearerAuth: [targeting:activate]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivationRequest"
+      responses:
+        "200":
+          description: Activation successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationResponse"
+        "400":
+          description: CPM floor validation failed
+        "404":
+          description: Segment not found
+        "401":
+          description: Unauthorized
+
+  /targeting/reach:
+    get:
+      summary: Estimate segment reach
+      tags:
+        - Targeting
+      security:
+        - bearerAuth: [targeting:read]
+      parameters:
+        - name: segment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reach estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReachEstimate"
+        "404":
+          description: Segment not found
+
+  /reports/delivery:
+    get:
+      summary: Delivery statistics
+      tags:
+        - Reports
+      security:
+        - bearerAuth: [reports:read]
+      parameters:
+        - name: segment_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 7
+      responses:
+        "200":
+          description: Delivery stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  segment_id:
+                    type: string
+                  period_days:
+                    type: integer
+                  total_activations:
+                    type: integer
+                  total_device_count:
+                    type: integer
+                  average_cpm:
+                    type: number
+                  report_timestamp:
+                    type: string
+                    format: date-time
+
+  /reports/overlap:
+    get:
+      summary: Segment overlap analysis
+      description: Calculate device overlap between segments using Redis SINTERCARD
+      tags:
+        - Reports
+      security:
+        - bearerAuth: [reports:read]
+      parameters:
+        - name: segment_ids
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+            example: ["seg_123", "seg_456"]
+      responses:
+        "200":
+          description: Overlap count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  segments:
+                    type: array
+                    items:
+                      type: string
+                  overlap_count:
+                    type: integer
+                  report_timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  schemas:
+    SegmentRule:
+      type: object
+      required:
+        - type
+        - value
+      properties:
+        type:
+          type: string
+          enum:
+            - watched_genre
+            - watched_network
+            - household_income
+            - dma
+            - daypart
+        value:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: array
+              items:
+                type: string
+        operator:
+          type: string
+          enum: [">=", "<=", "==", "in"]
+        min_hours_week:
+          type: number
+
+    SegmentDefinition:
+      type: object
+      required:
+        - name
+        - rules
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: "Sports Fans - NBA"
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/SegmentRule"
+        logic:
+          type: string
+          enum: [AND, OR]
+          default: AND
+        lookback_days:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 30
+        minimum_cpm_floor:
+          type: number
+          minimum: 0.10
+          default: 0.50
+
+    SegmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SegmentRule"
+        logic:
+          type: string
+        lookback_days:
+          type: integer
+        minimum_cpm_floor:
+          type: number
+        status:
+          type: string
+          enum: [pending, active, error]
+        device_count:
+          type: integer
+        household_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SegmentCreateResponse:
+      type: object
+      properties:
+        segment_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: pending
+        message:
+          type: string
+
+    SegmentSizeResponse:
+      type: object
+      properties:
+        segment_id:
+          type: string
+        household_count:
+          type: integer
+        device_count:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+        ip:
+          type: string
+          format: ipv4
+        ipv6:
+          type: string
+          format: ipv6
+        ua:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        os:
+          type: string
+        osv:
+          type: string
+        ifa:
+          type: string
+
+    OpenRTBLookupRequest:
+      type: object
+      properties:
+        device_id:
+          type: string
+        ip_address:
+          type: string
+        device:
+          $ref: "#/components/schemas/Device"
+
+    SegmentMatch:
+      type: object
+      properties:
+        segment_id:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        source:
+          type: string
+          enum: [device_hash, ip_household, inference]
+
+    OpenRTBLookupResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+        matched_segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SegmentMatch"
+        lookup_time_ms:
+          type: number
+        cache_hit:
+          type: boolean
+
+    ActivationRequest:
+      type: object
+      required:
+        - segment_id
+        - cpm_floor
+      properties:
+        segment_id:
+          type: string
+        cpm_floor:
+          type: number
+          minimum: 0.10
+        daily_budget:
+          type: number
+
+    ActivationResponse:
+      type: object
+      properties:
+        activation_id:
+          type: string
+          format: uuid
+        segment_id:
+          type: string
+        status:
+          type: string
+        activated_at:
+          type: string
+          format: date-time
+
+    ReachEstimate:
+      type: object
+      properties:
+        segment_id:
+          type: string
+        household_count:
+          type: integer
+        device_count:
+          type: integer
+        estimated_impressions_daily:
+          type: integer
+        estimated_reach_percentage:
+          type: number
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from /auth/token endpoint

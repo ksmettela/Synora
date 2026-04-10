@@ -1,0 +1,74 @@
+replicaCount: 5
+
+image:
+  repository: acraas/advertiser-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8084
+  targetPort: 8084
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: advertiser-api.acraas.internal
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8084"
+  prometheus.io/path: "/metrics"
+
+env:
+  LOG_LEVEL: "info"
+  SERVICE_NAME: "advertiser-api"
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8084
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8084
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - advertiser-api
+          topologyKey: kubernetes.io/hostname

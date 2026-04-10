@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: advertiser-api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: advertiser-api
+  template:
+    metadata:
+      labels:
+        app: advertiser-api
+    spec:
+      containers:
+      - name: advertiser-api
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi

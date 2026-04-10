@@ -1,0 +1,79 @@
+replicaCount: 2
+
+image:
+  repository: acraas/privacy-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8085
+  targetPort: 8085
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: "oauth2"
+  hosts:
+    - host: privacy-service.acraas.internal
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8085"
+  prometheus.io/path: "/metrics"
+
+env:
+  LOG_LEVEL: "warn"
+  SERVICE_NAME: "privacy-service"
+  DELETION_JOB_TIMEOUT_HOURS: "23"
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8085
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8085
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app
+              operator: In
+              values:
+                - privacy-service
+        topologyKey: kubernetes.io/hostname

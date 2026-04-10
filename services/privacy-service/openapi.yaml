@@ -1,0 +1,405 @@
+openapi: 3.0.0
+info:
+  title: Privacy Management Service
+  description: CCPA and GDPR compliance service for ACRaaS platform
+  version: "1.0.0"
+  contact:
+    name: ACRaaS Team
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: https://api.acraas.com/privacy/v1
+    description: Production
+  - url: http://localhost:8001/v1
+    description: Development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: privacy-service
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /compliance:
+    get:
+      summary: Compliance status
+      tags:
+        - Compliance
+      responses:
+        "200":
+          description: Compliance capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: compliant
+                  standards:
+                    type: array
+                    items:
+                      type: string
+                    example: [CCPA, GDPR, CPRA]
+                  features:
+                    type: array
+                    items:
+                      type: string
+
+  /consent/record:
+    post:
+      summary: Record device consent
+      description: Store or update consent record for device
+      tags:
+        - Consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRecord"
+      responses:
+        "200":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentResponse"
+        "400":
+          description: Invalid request
+
+  /consent/{device_id}:
+    get:
+      summary: Get device consent status
+      tags:
+        - Consent
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consent status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentStatus"
+        "404":
+          description: No consent record found
+
+  /privacy/opt-out:
+    post:
+      summary: Right to be forgotten (CCPA/GDPR)
+      description: >-
+        Submit opt-out request. Device is immediately removed from all segments.
+        Remaining data deletion within CCPA (24h) or GDPR (72h) deadline.
+      tags:
+        - Privacy Rights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptOutRequest"
+      responses:
+        "200":
+          description: Opt-out request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptOutResponse"
+        "400":
+          description: Invalid request
+
+  /privacy/data-export:
+    get:
+      summary: Data Subject Access Request (GDPR DSAR)
+      description: >-
+        Export all personal data held for device.
+        Returns pre-signed S3 URL to downloadable ZIP file.
+        Available for 72 hours.
+      tags:
+        - Privacy Rights
+      parameters:
+        - name: device_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Export job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataExportResponse"
+        "404":
+          description: No data found for device
+
+  /privacy/erase:
+    delete:
+      summary: Right to erasure (GDPR)
+      description: >-
+        Permanent erasure of all personal data.
+        Completes within 72 hours.
+      tags:
+        - Privacy Rights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EraseRequest"
+      responses:
+        "200":
+          description: Erasure request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EraseResponse"
+        "400":
+          description: Invalid request
+
+  /privacy/tcf:
+    post:
+      summary: Process TCF 2.2 consent string
+      description: >-
+        Parse IAB Transparency and Consent Framework (TCF) 2.2 consent string.
+        Extract vendor and purpose consents.
+      tags:
+        - Privacy Rights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TCFConsentRequest"
+      responses:
+        "200":
+          description: TCF processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TCFResponse"
+        "400":
+          description: Invalid TCF string
+
+components:
+  schemas:
+    ConsentRecord:
+      type: object
+      required:
+        - device_id
+        - opted_in
+        - consent_timestamp
+        - jurisdiction
+      properties:
+        device_id:
+          type: string
+          example: "device_12345"
+        opted_in:
+          type: boolean
+          example: true
+        consent_timestamp:
+          type: string
+          format: date-time
+        consent_version:
+          type: string
+          example: "1.0"
+        ip_at_consent:
+          type: string
+          description: /24 IP prefix for privacy
+          example: "192.168.1.0"
+        jurisdiction:
+          type: string
+          enum: [US, EU, CA]
+        tcf_string:
+          type: string
+          description: IAB TCF 2.2 consent string (optional)
+
+    ConsentResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+        status:
+          type: string
+          example: recorded
+        message:
+          type: string
+
+    ConsentStatus:
+      type: object
+      properties:
+        device_id:
+          type: string
+        opted_in:
+          type: boolean
+        last_updated:
+          type: string
+          format: date-time
+        jurisdiction:
+          type: string
+          enum: [US, EU, CA]
+
+    OptOutRequest:
+      type: object
+      required:
+        - device_id
+        - jurisdiction
+      properties:
+        device_id:
+          type: string
+        jurisdiction:
+          type: string
+          enum: [US, EU, CA]
+        reason:
+          type: string
+          description: Optional reason for opt-out
+
+    OptOutResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        status:
+          type: string
+          example: processing
+        deadline:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    DataExportRequest:
+      type: object
+      required:
+        - device_id
+      properties:
+        device_id:
+          type: string
+        format:
+          type: string
+          enum: [json, csv, xml]
+          default: json
+
+    DataExportResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        export_url:
+          type: string
+          format: uri
+          description: S3 pre-signed download URL
+        expiry:
+          type: string
+          format: date-time
+          description: URL expiry time
+        message:
+          type: string
+
+    EraseRequest:
+      type: object
+      required:
+        - device_id
+        - jurisdiction
+      properties:
+        device_id:
+          type: string
+        jurisdiction:
+          type: string
+          enum: [US, EU, CA]
+
+    EraseResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        status:
+          type: string
+          example: in_progress
+        deadline:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    TCFConsentRequest:
+      type: object
+      required:
+        - device_id
+        - tcf_string
+      properties:
+        device_id:
+          type: string
+        tcf_string:
+          type: string
+          description: Base64-encoded TCF 2.2 consent string
+        ip_address:
+          type: string
+          format: ipv4
+          description: Optional IP address for consent
+
+    TCFResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+        status:
+          type: string
+          example: processed
+        purposes:
+          type: array
+          items:
+            type: string
+          example:
+            [
+              "storage_access",
+              "personalization",
+              "ad_selection",
+            ]
+        vendors:
+          type: array
+          items:
+            type: string
+          description: List of consented vendor IDs
+        special_features:
+          type: array
+          items:
+            type: string
+          example: ["geo_location", "device_fingerprinting"]
+        message:
+          type: string

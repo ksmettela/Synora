@@ -1,0 +1,31 @@
+FROM golang:1.22-alpine
+
+WORKDIR /app
+
+# Install development tools and dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    librdkafka-dev \
+    gcc \
+    musl-dev \
+    curl
+
+# Install air for hot-reload
+RUN go install github.com/cosmtrek/air@latest
+
+# Copy module files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Expose ports
+EXPOSE 8080 9090
+
+# Run with air for hot-reload
+CMD ["air", "-c", ".air.toml"]

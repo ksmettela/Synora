@@ -1,0 +1,16 @@
+apiVersion: v2
+name: matching-engine
+description: ACRaaS matching engine service
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - acraas
+  - matching
+  - engine
+home: https://github.com/synora/acraas
+sources:
+  - https://github.com/synora/acraas
+maintainers:
+  - name: ACRaaS Team
+    email: platform@synora.io
