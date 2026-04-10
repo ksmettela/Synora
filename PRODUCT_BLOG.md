@@ -2,8 +2,6 @@
 
 **The open ACR data platform that turns non-Samsung smart TVs into advertising goldmines.**
 
-*April 2026 | Synora Platform Team*
-
 ---
 
 ## The $30 Billion Blind Spot in TV Advertising
