@@ -1,1 +1,1 @@
-"""ACRaaS load tests."""
+"""Synora load tests."""

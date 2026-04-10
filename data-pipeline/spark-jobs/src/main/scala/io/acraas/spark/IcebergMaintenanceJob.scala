@@ -8,7 +8,7 @@ object IcebergMaintenanceJob {
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
-      .appName("ACRaaS Iceberg Maintenance")
+      .appName("Synora Iceberg Maintenance")
       .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
       .config("spark.sql.catalog.iceberg", "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.iceberg.type", "hive")

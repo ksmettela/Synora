@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Advertiser/DSP API",
-        description="ACRaaS Advertiser API for DSP segment management and targeting",
+        description="Synora Advertiser API for DSP segment management and targeting",
         version=settings.VERSION,
         openapi_url="/openapi.json",
         docs_url="/docs",

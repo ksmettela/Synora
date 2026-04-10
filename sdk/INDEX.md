@@ -1,10 +1,10 @@
-# ACRaaS SDK - Complete Index
+# Synora SDK - Complete Index
 
-Welcome to the ACRaaS (Automatic Content Recognition as a Service) SDK. This is a production-grade C++17 embedded library for TV manufacturers.
+Welcome to the Synora (Automatic Content Recognition as a Service) SDK. This is a production-grade C++17 embedded library for TV manufacturers.
 
 ## Getting Started (5 minutes)
 
-1. **New to ACRaaS?** Start here: [`QUICK_START.md`](QUICK_START.md)
+1. **New to Synora?** Start here: [`QUICK_START.md`](QUICK_START.md)
 2. **Want an overview?** Read: [`README.md`](README.md)
 3. **Ready to build?** Follow: [`docs/build-guide.md`](docs/build-guide.md)
 

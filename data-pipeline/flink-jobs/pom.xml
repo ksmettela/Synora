@@ -10,7 +10,7 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>ACRaaS Flink Iceberg Ingestion Job</name>
+    <name>Synora Flink Iceberg Ingestion Job</name>
     <description>Consumes Kafka viewership events and writes to Apache Iceberg on S3/MinIO</description>
 
     <properties>

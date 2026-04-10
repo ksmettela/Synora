@@ -1,5 +1,5 @@
 """
-Pytest configuration and shared fixtures for ACRaaS integration tests.
+Pytest configuration and shared fixtures for Synora integration tests.
 """
 import pytest
 import httpx

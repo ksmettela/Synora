@@ -1,5 +1,5 @@
 """
-ACRaaS Airflow Plugins
+Synora Airflow Plugins
 Custom operators and hooks for the data pipeline
 """
 

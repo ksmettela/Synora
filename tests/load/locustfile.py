@@ -1,5 +1,5 @@
 """
-Load tests for ACRaaS platform using Locust.
+Load tests for Synora platform using Locust.
 
 Run with:
   locust -f tests/load/locustfile.py --headless -u 100 -r 10 --run-time 60s

@@ -15,7 +15,7 @@ MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-acraas_access}"
 MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-acraas_secret}"
 
 echo "================================================"
-echo "ACRaaS Initialization Script"
+echo "Synora Initialization Script"
 echo "================================================"
 echo ""
 
@@ -266,7 +266,7 @@ echo "✓ MinIO buckets created"
 # Summary
 echo ""
 echo "================================================"
-echo "✓ ACRaaS Initialization Complete!"
+echo "✓ Synora Initialization Complete!"
 echo "================================================"
 echo ""
 echo "Service URLs:"

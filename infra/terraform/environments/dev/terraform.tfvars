@@ -17,7 +17,7 @@ rds_master_password = "changeme_to_secure_password"
 
 tags = {
   Environment = "dev"
-  Project     = "ACRaaS"
+  Project     = "Synora"
   ManagedBy   = "Terraform"
   Owner       = "platform-team"
 }

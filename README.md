@@ -1,4 +1,4 @@
-# ACRaaS: Audience Correlation & Reporting as a Service
+# Synora: Audience Correlation & Reporting as a Service
 
 A modern, distributed platform for fingerprint-based audience correlation, real-time matching, and privacy-compliant advertising intelligence.
 
@@ -127,7 +127,7 @@ open http://localhost:3001  # admin/admin
 # Airflow - Data pipeline orchestration
 open http://localhost:8089
 
-# Frontend - ACRaaS application
+# Frontend - Synora application
 open http://localhost:3000
 ```
 
@@ -574,7 +574,7 @@ make clean && make build
 
 ## License
 
-ACRaaS is proprietary software. All rights reserved.
+Synora is proprietary software. All rights reserved.
 
 ---
 

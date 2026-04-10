@@ -1,4 +1,4 @@
-ACRaaS Fingerprint Ingestor - Complete File Manifest
+Synora Fingerprint Ingestor - Complete File Manifest
 =====================================================
 
 Project Location: /Users/kumarswamymettela/Downloads/Side Projects/Synora/acraas/services/fingerprint-ingestor/
@@ -292,5 +292,5 @@ PRODUCTION DEPLOYMENT
 END OF FILE MANIFEST
 ====================
 Created: 2024-04-10
-Project: ACRaaS Fingerprint Ingestor Microservice
+Project: Synora Fingerprint Ingestor Microservice
 Status: Production Ready

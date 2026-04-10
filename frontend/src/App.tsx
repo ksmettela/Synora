@@ -32,7 +32,7 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>ACRaaS Dashboard</h1>
+        <h1>Synora Dashboard</h1>
         <p>Audience Correlation & Reporting as a Service</p>
       </header>
       <main>

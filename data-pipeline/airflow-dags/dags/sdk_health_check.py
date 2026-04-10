@@ -198,7 +198,7 @@ def send_slack_alert(alert_summary, **context):
         return
     
     message = f"""
-:warning: ACRaaS SDK Health Check Alert
+:warning: Synora SDK Health Check Alert
 Timestamp: {alert_summary['timestamp']}
 
 *Alert Summary:*

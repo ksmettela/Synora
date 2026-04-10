@@ -21,7 +21,7 @@ sns_topic_arns = [
 
 tags = {
   Environment = "prod"
-  Project     = "ACRaaS"
+  Project     = "Synora"
   ManagedBy   = "Terraform"
   Owner       = "platform-team"
   CostCenter  = "engineering"

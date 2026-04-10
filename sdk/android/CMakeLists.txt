@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-# Android NDK build configuration for ACRaaS SDK
+# Android NDK build configuration for Synora SDK
 
 # Find required packages for Android
 find_package(OpenSSL REQUIRED)

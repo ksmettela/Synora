@@ -1,4 +1,4 @@
-ACRaaS DATA PIPELINE - COMPLETE FILE INDEX
+Synora DATA PIPELINE - COMPLETE FILE INDEX
 ============================================
 
 COMPONENT 1: FLINK JOBS (Real-time Streaming Ingestion)

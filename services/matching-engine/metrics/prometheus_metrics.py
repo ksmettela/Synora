@@ -1,4 +1,4 @@
-"""Prometheus metrics for ACRaaS matching engine"""
+"""Prometheus metrics for Synora matching engine"""
 
 from prometheus_client import Counter, Histogram, Gauge, Registry
 import structlog

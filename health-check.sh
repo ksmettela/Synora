@@ -2,7 +2,7 @@
 
 set -e
 
-echo "ACRaaS Health Check"
+echo "Synora Health Check"
 echo "==================="
 echo ""
 

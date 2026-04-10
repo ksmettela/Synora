@@ -1,10 +1,10 @@
 openapi: 3.0.0
 info:
   title: Advertiser/DSP API
-  description: ACRaaS Advertiser API for DSP segment management and real-time targeting
+  description: Synora Advertiser API for DSP segment management and real-time targeting
   version: "1.0.0"
   contact:
-    name: ACRaaS Team
+    name: Synora Team
   license:
     name: Apache 2.0
 

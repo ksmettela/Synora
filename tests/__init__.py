@@ -1,1 +1,1 @@
-"""ACRaaS test suite."""
+"""Synora test suite."""

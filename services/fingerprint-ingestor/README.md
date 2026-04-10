@@ -1,6 +1,6 @@
-# Fingerprint Ingestor - ACRaaS
+# Fingerprint Ingestor - Synora
 
-High-throughput HTTP fingerprint ingestion service for ACRaaS. Receives fingerprint batches from TV SDK devices and publishes them to Kafka for downstream processing.
+High-throughput HTTP fingerprint ingestion service for Synora. Receives fingerprint batches from TV SDK devices and publishes them to Kafka for downstream processing.
 
 **Target Throughput:** 500K requests/sec  
 **Language:** Go 1.22  

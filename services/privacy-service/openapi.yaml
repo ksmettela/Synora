@@ -1,10 +1,10 @@
 openapi: 3.0.0
 info:
   title: Privacy Management Service
-  description: CCPA and GDPR compliance service for ACRaaS platform
+  description: CCPA and GDPR compliance service for Synora platform
   version: "1.0.0"
   contact:
-    name: ACRaaS Team
+    name: Synora Team
   license:
     name: Apache 2.0
 

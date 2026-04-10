@@ -37,7 +37,7 @@ variable "tags" {
   description = "Tags applied to all resources"
   default = {
     Environment = "dev"
-    Project     = "ACRaaS"
+    Project     = "Synora"
     ManagedBy   = "Terraform"
   }
 }

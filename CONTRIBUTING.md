@@ -1,4 +1,4 @@
-# Contributing to ACRaaS
+# Contributing to Synora
 
 ## Development Setup
 

@@ -1,5 +1,5 @@
 /**
- * ACRaaS SDK Main Library Implementation
+ * Synora SDK Main Library Implementation
  */
 
 #include "../include/acr.h"

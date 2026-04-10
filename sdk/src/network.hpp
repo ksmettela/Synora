@@ -1,7 +1,7 @@
 /**
  * HTTP Network Client for Batch Fingerprint Transmission
  *
- * Handles transmission to ACRaaS ingest server with exponential backoff.
+ * Handles transmission to Synora ingest server with exponential backoff.
  */
 
 #ifndef ACR_NETWORK_HPP

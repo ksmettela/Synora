@@ -1,6 +1,6 @@
-# ACRaaS SDK - Build Guide
+# Synora SDK - Build Guide
 
-Complete instructions for building the ACRaaS SDK on various platforms.
+Complete instructions for building the Synora SDK on various platforms.
 
 ## Prerequisites
 

@@ -8,7 +8,7 @@ object RetentionCleanupJob {
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
-      .appName("ACRaaS Data Retention Cleanup")
+      .appName("Synora Data Retention Cleanup")
       .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
       .config("spark.sql.catalog.iceberg", "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.iceberg.type", "hive")

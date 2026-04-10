@@ -1,6 +1,6 @@
-# ACRaaS SDK - Complete File Listing
+# Synora SDK - Complete File Listing
 
-This document lists all files in the ACRaaS SDK and their purposes.
+This document lists all files in the Synora SDK and their purposes.
 
 ## Public API Header
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-High-throughput HTTP fingerprint ingestion service for ACRaaS. Accepts fingerprint batches from TV SDK devices and publishes them to Kafka for processing. Target throughput: 500K requests/sec.
+High-throughput HTTP fingerprint ingestion service for Synora. Accepts fingerprint batches from TV SDK devices and publishes them to Kafka for processing. Target throughput: 500K requests/sec.
 
 ## Endpoints
 

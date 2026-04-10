@@ -1,4 +1,4 @@
-ACRaaS Integration Test Suite - File Manifest
+Synora Integration Test Suite - File Manifest
 ==============================================
 
 Total Files: 14

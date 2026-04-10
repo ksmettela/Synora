@@ -1,5 +1,5 @@
 /**
- * ACRaaS SDK - Kotlin JNI Wrapper for Android TV
+ * Synora SDK - Kotlin JNI Wrapper for Android TV
  *
  * Provides convenient Kotlin bindings to the native C SDK.
  */
@@ -7,7 +7,7 @@
 package io.acraas.sdk
 
 /**
- * Main ACRaaS SDK Kotlin wrapper
+ * Main Synora SDK Kotlin wrapper
  *
  * Usage:
  * ```
@@ -32,7 +32,7 @@ object AcrSdk {
     }
 
     /**
-     * ACRaaS SDK Configuration
+     * Synora SDK Configuration
      *
      * @param serverUrl Ingest server URL (e.g., "https://acr-ingest.example.com")
      * @param apiKey API key for authentication
@@ -64,7 +64,7 @@ object AcrSdk {
     }
 
     /**
-     * Initialize the ACRaaS SDK
+     * Initialize the Synora SDK
      *
      * Must be called before any other SDK method.
      *

@@ -1,6 +1,6 @@
 # Fingerprint Ingestor Implementation Summary
 
-Complete Go 1.22 implementation of the ACRaaS fingerprint ingestion microservice. All files created with production-quality code, comprehensive error handling, and full test coverage.
+Complete Go 1.22 implementation of the Synora fingerprint ingestion microservice. All files created with production-quality code, comprehensive error handling, and full test coverage.
 
 ## Files Created
 

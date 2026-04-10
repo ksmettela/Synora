@@ -1,5 +1,5 @@
 /**
- * ACRaaS SDK - JNI Bridge Implementation
+ * Synora SDK - JNI Bridge Implementation
  *
  * Implements JNI bindings for Kotlin/Java to call native C SDK.
  */
@@ -31,7 +31,7 @@ static std::string JavaStringToCString(JNIEnv* env, jstring str) {
 extern "C" {
 
 /**
- * JNI: Initialize ACRaaS SDK
+ * JNI: Initialize Synora SDK
  *
  * Java signature:
  * private external fun native_init(

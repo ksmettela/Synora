@@ -119,7 +119,7 @@ if(BUILD_ANDROID)
 endif()
 
 # Print build info
-message(STATUS "ACRaaS SDK ${PROJECT_VERSION}")
+message(STATUS "Synora SDK ${PROJECT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Shared library: libacr.so")

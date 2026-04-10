@@ -1,5 +1,5 @@
 /**
- * ACRaaS SDK - Automatic Content Recognition as a Service
+ * Synora SDK - Automatic Content Recognition as a Service
  * Public C ABI Header
  *
  * This is the public interface for TV manufacturers to embed

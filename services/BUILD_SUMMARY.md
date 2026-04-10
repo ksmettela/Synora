@@ -1,8 +1,8 @@
-# ACRaaS Services Build Summary
+# Synora Services Build Summary
 
 ## Overview
 
-Two complete production-ready services have been built for the ACRaaS (Ad Content Recognition as a Service) platform:
+Two complete production-ready services have been built for the Synora (Ad Content Recognition as a Service) platform:
 
 1. **Fingerprint Indexer** (Rust) - Reference database and fuzzy matching
 2. **Matching Engine** (Python) - Real-time stream processing

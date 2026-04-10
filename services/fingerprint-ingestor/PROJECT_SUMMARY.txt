@@ -1,10 +1,10 @@
 ================================================================================
-ACRaaS FINGERPRINT INGESTOR MICROSERVICE - PROJECT COMPLETE
+Synora FINGERPRINT INGESTOR MICROSERVICE - PROJECT COMPLETE
 ================================================================================
 
 PROJECT OVERVIEW
 ================================================================================
-A high-throughput HTTP fingerprint ingestion service for ACRaaS (Advertisement
+A high-throughput HTTP fingerprint ingestion service for Synora (Advertisement
 Recognition as a Service). Receives fingerprint batches from TV SDK devices and
 publishes them to Apache Kafka for downstream processing.
 

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: privacy-service
-description: ACRaaS privacy and consent management service
+description: Synora privacy and consent management service
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
@@ -13,5 +13,5 @@ home: https://github.com/synora/acraas
 sources:
   - https://github.com/synora/acraas
 maintainers:
-  - name: ACRaaS Team
+  - name: Synora Team
     email: platform@synora.io

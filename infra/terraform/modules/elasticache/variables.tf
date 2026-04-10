@@ -7,7 +7,7 @@ variable "replication_group_id" {
 variable "description" {
   type        = string
   description = "Description of the replication group"
-  default     = "ACRaaS Redis cluster for caching and real-time data"
+  default     = "Synora Redis cluster for caching and real-time data"
 }
 
 variable "vpc_id" {
@@ -67,7 +67,7 @@ variable "tags" {
   type        = map(string)
   description = "Tags to apply to resources"
   default = {
-    Project   = "ACRaaS"
+    Project   = "Synora"
     Component = "Cache"
   }
 }

@@ -1,7 +1,7 @@
-# ACRaaS Data Pipeline Components - Complete Implementation
+# Synora Data Pipeline Components - Complete Implementation
 
 ## Overview
-Three production-ready data pipeline components built for the ACRaaS (Ad Credit as a Service) platform, handling real-time viewership ingestion, daily aggregation, and orchestrated processing workflows.
+Three production-ready data pipeline components built for the Synora (Ad Credit as a Service) platform, handling real-time viewership ingestion, daily aggregation, and orchestrated processing workflows.
 
 **Total Files Created:** 31 files
 **Total Code Lines:** 2,237 lines across all components

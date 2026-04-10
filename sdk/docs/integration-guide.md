@@ -1,8 +1,8 @@
-# ACRaaS SDK Integration Guide
+# Synora SDK Integration Guide
 
 ## Overview
 
-The ACRaaS (Automatic Content Recognition as a Service) SDK is a C++17 embedded library for TV manufacturers to integrate into their firmware. It performs automatic content recognition by capturing audio, generating fingerprints, and transmitting them to the ACRaaS ingest server.
+The Synora (Automatic Content Recognition as a Service) SDK is a C++17 embedded library for TV manufacturers to integrate into their firmware. It performs automatic content recognition by capturing audio, generating fingerprints, and transmitting them to the Synora ingest server.
 
 ## Requirements
 

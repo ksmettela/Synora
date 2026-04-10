@@ -1,5 +1,5 @@
 """
-Full pipeline integration tests for ACRaaS.
+Full pipeline integration tests for Synora.
 """
 import pytest
 import time

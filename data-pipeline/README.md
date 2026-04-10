@@ -1,4 +1,4 @@
-# ACRaaS Data Pipeline
+# Synora Data Pipeline
 
 Production-ready data pipeline for the Ad Credit as a Service platform. This repository contains three integrated components for real-time viewership ingestion, daily aggregation, and orchestrated processing.
 

@@ -1,4 +1,4 @@
-# ACRaaS Platform API Reference
+# Synora Platform API Reference
 **Version 1.0 · Base URL: https://api.acraas.io**
 
 ## Table of Contents
@@ -22,7 +22,7 @@
 
 ## Authentication
 
-ACRaaS uses OAuth2 client credentials flow for API authentication. All API requests must include a Bearer token in the Authorization header.
+Synora uses OAuth2 client credentials flow for API authentication. All API requests must include a Bearer token in the Authorization header.
 
 ### Step 1: Obtain Credentials
 
@@ -116,7 +116,7 @@ response = requests.get(
 
 ## Rate Limits
 
-ACRaaS enforces rate limits per endpoint to ensure fair resource usage and platform stability. Rate limits are applied per client (identified by `client_id`).
+Synora enforces rate limits per endpoint to ensure fair resource usage and platform stability. Rate limits are applied per client (identified by `client_id`).
 
 | Endpoint | Rate Limit | Burst Limit | Window |
 |---|---|---|---|
@@ -593,7 +593,7 @@ Synchronous OpenRTB auction request. DSPs call this endpoint to determine if a d
 - `ttl_seconds`: How long this match result is valid (cache this long)
 
 **Match Types**:
-- `device`: Matched via unique ACRaaS device ID (highest confidence)
+- `device`: Matched via unique Synora device ID (highest confidence)
 - `household`: Matched via IP household grouping (medium confidence)
 - `ip`: Matched via IP prefix only (lowest confidence)
 
@@ -964,14 +964,14 @@ Get manufacturer revenue share summary (for SDK partners).
 
 ## Webhooks
 
-ACRaaS can send real-time webhook notifications to your application when important events occur.
+Synora can send real-time webhook notifications to your application when important events occur.
 
 ### Registering Webhooks
 
 1. Log in to https://portal.acraas.io/webhooks
 2. Create a new webhook endpoint
 3. Specify the events you want to receive
-4. ACRaaS will POST event data to your URL
+4. Synora will POST event data to your URL
 
 ### Event Types
 
@@ -1010,7 +1010,7 @@ import hashlib
 import json
 
 def verify_webhook(request_body, signature_header, secret):
-    """Verify ACRaaS webhook signature."""
+    """Verify Synora webhook signature."""
     computed = hmac.new(
         secret.encode(),
         request_body.encode(),
@@ -1027,7 +1027,7 @@ WEBHOOK_SECRET = "whk_secret_xyz789"
 
 @app.route("/webhook", methods=["POST"])
 def handle_webhook():
-    signature = request.headers.get("X-ACRaaS-Signature")
+    signature = request.headers.get("X-Synora-Signature")
     body = request.get_data(as_text=True)
     
     if not verify_webhook(body, signature, WEBHOOK_SECRET):
@@ -1052,7 +1052,7 @@ def handle_webhook():
 
 ## SDKs & Client Libraries
 
-ACRaaS publishes official SDK/client libraries in multiple languages for easier integration.
+Synora publishes official SDK/client libraries in multiple languages for easier integration.
 
 ### Available Libraries
 

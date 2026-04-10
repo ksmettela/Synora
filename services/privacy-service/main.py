@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Privacy Management Service",
-        description="CCPA and GDPR compliance service for ACRaaS platform",
+        description="CCPA and GDPR compliance service for Synora platform",
         version=settings.VERSION,
         openapi_url="/openapi.json",
         docs_url="/docs",

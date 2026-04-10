@@ -1,5 +1,5 @@
 /**
- * ACRaaS SDK Test Program
+ * Synora SDK Test Program
  *
  * Simple test that demonstrates SDK initialization and usage.
  */
@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 int main() {
-    std::cout << "ACRaaS SDK Test Program v" << acr_version() << std::endl;
+    std::cout << "Synora SDK Test Program v" << acr_version() << std::endl;
     std::cout << "================================" << std::endl;
 
     // Configuration

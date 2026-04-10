@@ -27,7 +27,7 @@ provider "aws" {
   default_tags {
     tags = {
       Environment = "prod"
-      Project     = "ACRaaS"
+      Project     = "Synora"
       ManagedBy   = "Terraform"
     }
   }
@@ -87,7 +87,7 @@ module "elasticache" {
   source = "../../modules/elasticache"
 
   replication_group_id      = "${var.cluster_name}-prod-redis"
-  description               = "ACRaaS Redis cluster for production"
+  description               = "Synora Redis cluster for production"
   vpc_id                    = var.vpc_id
   subnet_ids                = var.subnet_ids
   node_type                 = "cache.r7g.xlarge"

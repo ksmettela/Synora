@@ -12,7 +12,7 @@ DOCKER_COMPOSE := docker-compose
 DOCKER := docker
 
 help:
-	@echo "$(BLUE)ACRaaS Development Commands$(NC)"
+	@echo "$(BLUE)Synora Development Commands$(NC)"
 	@echo ""
 	@echo "$(GREEN)Infrastructure:$(NC)"
 	@echo "  make up              - Start all services"
@@ -42,14 +42,14 @@ help:
 	@echo ""
 
 up:
-	@echo "$(GREEN)Starting ACRaaS services...$(NC)"
+	@echo "$(GREEN)Starting Synora services...$(NC)"
 	$(DOCKER_COMPOSE) up -d
 	@sleep 5
 	@echo "$(GREEN)✓ Services started. Waiting for health checks...$(NC)"
 	@$(DOCKER_COMPOSE) ps
 
 down:
-	@echo "$(RED)Stopping ACRaaS services...$(NC)"
+	@echo "$(RED)Stopping Synora services...$(NC)"
 	$(DOCKER_COMPOSE) down
 	@echo "$(GREEN)✓ Services stopped$(NC)"
 
@@ -84,7 +84,7 @@ logs-%:
 	$(DOCKER_COMPOSE) logs -f $*
 
 init:
-	@echo "$(GREEN)Initializing ACRaaS infrastructure...$(NC)"
+	@echo "$(GREEN)Initializing Synora infrastructure...$(NC)"
 	@chmod +x docker-compose.init.sh
 	@./docker-compose.init.sh
 

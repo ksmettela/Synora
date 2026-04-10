@@ -1,8 +1,8 @@
-# ACRaaS Monorepo Scaffold - Creation Summary
+# Synora Monorepo Scaffold - Creation Summary
 
 ## Project Structure Created
 
-The complete ACRaaS monorepo scaffold has been successfully created at `/Users/kumarswamymettela/Downloads/Side Projects/Synora/acraas/`
+The complete Synora monorepo scaffold has been successfully created at `/Users/kumarswamymettela/Downloads/Side Projects/Synora/acraas/`
 
 ### Directory Hierarchy
 

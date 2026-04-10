@@ -1,5 +1,5 @@
 """
-Load tests for ACRaaS platform using Locust.
+Load tests for Synora platform using Locust.
 Run: locust -f tests/load/load_test.py --host=http://localhost:8080 -u 100 -r 10 -t 5m
 """
 from locust import HttpUser, task, between, events
@@ -363,7 +363,7 @@ class PrivacyComplianceUser(HttpUser):
 def on_test_start(environment, **kwargs):
     """Called when Locust test starts."""
     print("\n" + "="*80)
-    print("ACRaaS Load Test Started")
+    print("Synora Load Test Started")
     print("="*80)
 
 
@@ -371,7 +371,7 @@ def on_test_start(environment, **kwargs):
 def on_test_stop(environment, **kwargs):
     """Called when Locust test stops."""
     print("\n" + "="*80)
-    print("ACRaaS Load Test Completed")
+    print("Synora Load Test Completed")
     print("="*80)
     print(f"Total requests: {environment.stats.total.num_requests}")
     print(f"Total failures: {environment.stats.total.num_failures}")

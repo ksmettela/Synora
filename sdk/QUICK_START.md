@@ -1,6 +1,6 @@
-# ACRaaS SDK - Quick Start Guide
+# Synora SDK - Quick Start Guide
 
-Get the ACRaaS SDK built and integrated in 5 minutes.
+Get the Synora SDK built and integrated in 5 minutes.
 
 ## Prerequisites
 

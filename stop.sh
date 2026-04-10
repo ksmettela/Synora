@@ -2,7 +2,7 @@
 
 set -e
 
-echo "Stopping ACRaaS services..."
+echo "Stopping Synora services..."
 docker-compose down
 
 echo "✓ All services stopped"

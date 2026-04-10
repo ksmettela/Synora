@@ -20,7 +20,7 @@ public class ViewershipIngestionJob {
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        LOG.info("Starting ACRaaS Viewership Iceberg Ingestion Job");
+        LOG.info("Starting Synora Viewership Iceberg Ingestion Job");
 
         env.enableCheckpointing(60_000);
         env.getCheckpointConfig().setCheckpointingMode(
@@ -62,6 +62,6 @@ public class ViewershipIngestionJob {
 
         LOG.info("Iceberg sink configured");
 
-        env.execute("ACRaaS Viewership Iceberg Ingestion");
+        env.execute("Synora Viewership Iceberg Ingestion");
     }
 }

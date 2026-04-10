@@ -1,5 +1,5 @@
 ================================================================================
-ACRaaS SDK - Automatic Content Recognition as a Service
+Synora SDK - Automatic Content Recognition as a Service
 Complete C++17 Embedded Library for TV Manufacturers
 ================================================================================
 

@@ -1,10 +1,10 @@
 #\!/bin/bash
-# Quick start script for ACRaaS test suite
+# Quick start script for Synora test suite
 
 set -e
 
 echo "================================"
-echo "ACRaaS Test Suite Quick Start"
+echo "Synora Test Suite Quick Start"
 echo "================================"
 echo ""
 

@@ -1,9 +1,9 @@
-# ACRaaS Platform Architecture
+# Synora Platform Architecture
 **Version 1.0 · April 2026**
 
 ## System Architecture Overview
 
-The ACRaaS (Automatic Content Recognition as a Service) platform is a distributed, cloud-native system designed to ingest, match, and monetize audio fingerprints at scale. The architecture is divided into 9 core components that operate independently but in concert.
+The Synora (Automatic Content Recognition as a Service) platform is a distributed, cloud-native system designed to ingest, match, and monetize audio fingerprints at scale. The architecture is divided into 9 core components that operate independently but in concert.
 
 ### High-Level Architecture Diagram
 
@@ -21,7 +21,7 @@ The ACRaaS (Automatic Content Recognition as a Service) platform is a distribute
                                      │ (1KB per minute)
                                      ↓
         ┌────────────────────────────────────────────────────────┐
-        │         ACRaaS Cloud Platform (AWS Multi-AZ)           │
+        │         Synora Cloud Platform (AWS Multi-AZ)           │
         ├────────────────────────────────────────────────────────┤
         │                                                         │
         │  ┌─────────────────────────────────────────────────┐   │
@@ -433,7 +433,7 @@ Example:
 
 7. **T+30min: Advertiser RTB bid request**
    - DSP checks: "Which devices match sports fans?"
-   - Calls ACRaaS OpenRTB API
+   - Calls Synora OpenRTB API
 
 8. **T+30min+2ms: Monetization engine responds**
    - Device matches segment; calculates price
@@ -633,7 +633,7 @@ Each component scales independently:
 
 ## Conclusion
 
-The ACRaaS platform achieves:
+The Synora platform achieves:
 - **Scale**: 1M fingerprints/sec, 2.9B devices tracked
 - **Latency**: < 5ms RTB, < 200ms matching
 - **Reliability**: 99.9% uptime, < 1 hour RTO
@@ -646,5 +646,5 @@ The architecture prioritizes independent scaling, data immutability, and privacy
 
 **Document Version**: 1.0  
 **Last Updated**: April 2026  
-**Authors**: ACRaaS Platform Team  
+**Authors**: Synora Platform Team  
 **Contact**: architecture@acraas.io

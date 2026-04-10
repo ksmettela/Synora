@@ -312,7 +312,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
 }
 
 resource "aws_kms_key" "s3" {
-  description             = "KMS key for ACRaaS S3 buckets"
+  description             = "KMS key for Synora S3 buckets"
   deletion_window_in_days = 7
   enable_key_rotation     = true
 

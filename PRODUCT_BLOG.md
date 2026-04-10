@@ -1,4 +1,4 @@
-# Synora ACRaaS: Building the "Samsung Ads" for Every Other TV
+# Synora Synora: Building the "Samsung Ads" for Every Other TV
 
 **The open ACR data platform that turns non-Samsung smart TVs into advertising goldmines.**
 
@@ -12,32 +12,32 @@ Every year, advertisers pour roughly $70 billion into TV advertising in the Unit
 
 But Samsung only covers about 30% of the US Smart TV market. The other 70% — LG, Vizio, Sony, TCL, Hisense, Toshiba, and dozens of smaller brands — either have weak ACR implementations, fragmented data strategies, or don't monetize viewing data at all. That's roughly 100 million US households whose viewing behavior is invisible to advertisers.
 
-Synora ACRaaS (Automatic Content Recognition as a Service) exists to close that gap. We provide a turnkey ACR SDK that any Smart TV manufacturer can embed in their firmware, a cloud platform that handles all the heavy lifting of fingerprint matching, audience segmentation, and real-time bidding integration, and a revenue-share model that makes the economics irresistible for manufacturers.
+Synora Synora (Automatic Content Recognition as a Service) exists to close that gap. We provide a turnkey ACR SDK that any Smart TV manufacturer can embed in their firmware, a cloud platform that handles all the heavy lifting of fingerprint matching, audience segmentation, and real-time bidding integration, and a revenue-share model that makes the economics irresistible for manufacturers.
 
 The moat isn't the technology. The moat is the data.
 
 ---
 
-## What ACRaaS Actually Does
+## What Synora Actually Does
 
-At its core, ACRaaS answers one question at massive scale: *"What is this TV playing right now?"*
+At its core, Synora answers one question at massive scale: *"What is this TV playing right now?"*
 
 Every 30 seconds, our SDK captures a 3-second audio snippet from the TV's audio bus, converts it into a cryptographic fingerprint hash (a one-way mathematical function — the original audio cannot be reconstructed), and batches these fingerprints for transmission to our cloud. There, we match them against a reference database of 50+ million episodes, movies, and live broadcasts. When we find a match, we know that Device X was watching ESPN SportsCenter at 8:47 PM EST. Multiply that across millions of devices, and you have the most granular picture of TV viewership outside Samsung's walled garden.
 
-The critical difference between ACRaaS and a naive approach: we never capture raw audio. We never store full IP addresses. We never collect MAC addresses or personally identifiable information. The device ID itself is salted and rotated monthly so it cannot be traced back to a physical device. Privacy isn't an afterthought — it's baked into the protocol at the silicon level.
+The critical difference between Synora and a naive approach: we never capture raw audio. We never store full IP addresses. We never collect MAC addresses or personally identifiable information. The device ID itself is salted and rotated monthly so it cannot be traced back to a physical device. Privacy isn't an afterthought — it's baked into the protocol at the silicon level.
 
 ---
 
 ## Platform Architecture
 
-The ACRaaS platform is a distributed, cloud-native system designed to process over 1 million fingerprints per second with sub-200ms matching latency. Here's how it all fits together:
+The Synora platform is a distributed, cloud-native system designed to process over 1 million fingerprints per second with sub-200ms matching latency. Here's how it all fits together:
 
 ### System Architecture Overview
 
 ```mermaid
 graph TB
     subgraph "TV Devices (Manufacturer Firmware)"
-        SDK["ACRaaS SDK<br/>(C++17, < 5MB)"]
+        SDK["Synora SDK<br/>(C++17, < 5MB)"]
         AC["Audio Capture<br/>(ALSA/HDMI ARC)"]
         FFT["FFT Fingerprint<br/>Engine"]
         LC["SQLite Local<br/>Cache (encrypted)"]
@@ -47,7 +47,7 @@ graph TB
 
     SDK -->|"HTTPS POST<br/>batch of 20 FPs<br/>every 60s"| LB
 
-    subgraph "ACRaaS Cloud Platform (AWS Multi-AZ)"
+    subgraph "Synora Cloud Platform (AWS Multi-AZ)"
         LB["Load Balancer<br/>(ALB)"]
         
         subgraph "Ingestion Layer"
@@ -143,7 +143,7 @@ graph TB
 
 ## The Fingerprint Pipeline: From Sound Wave to Revenue
 
-This is the heart of ACRaaS — the journey of a single audio fingerprint from capture on a TV in someone's living room to revenue in a manufacturer's bank account.
+This is the heart of Synora — the journey of a single audio fingerprint from capture on a TV in someone's living room to revenue in a manufacturer's bank account.
 
 ### End-to-End Data Flow
 
@@ -226,13 +226,13 @@ At month end, the billing service queries Iceberg for all matched viewership att
 
 ## The SDK: 5MB That Makes TVs Smarter
 
-The ACRaaS SDK is the foundational piece — a production-ready C++17 embedded library designed to run on resource-constrained Smart TV hardware.
+The Synora SDK is the foundational piece — a production-ready C++17 embedded library designed to run on resource-constrained Smart TV hardware.
 
 ### SDK Architecture
 
 ```mermaid
 graph LR
-    subgraph "ACRaaS SDK (C++17)"
+    subgraph "Synora SDK (C++17)"
         direction TB
         
         API["Public C ABI<br/><code>acr.h</code><br/>6 functions"]
@@ -410,7 +410,7 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant User as TV User
-    participant SDK as ACRaaS SDK
+    participant SDK as Synora SDK
     participant PRIV as Privacy Service
     participant REDIS as Redis (Opt-out Set)
     participant ING as Ingestor
@@ -440,7 +440,7 @@ sequenceDiagram
 
 ### Regulatory Compliance Matrix
 
-| Regulation | Requirement | How ACRaaS Complies |
+| Regulation | Requirement | How Synora Complies |
 |---|---|---|
 | **GDPR** (EU) | Right to access | Privacy service exports all user data from Iceberg |
 | **GDPR** (EU) | Right to deletion | Batch job deletes via Iceberg ACID transactions |
@@ -455,7 +455,7 @@ sequenceDiagram
 
 ## Data Pipeline Architecture
 
-Beyond the real-time streaming layer, ACRaaS runs batch processing pipelines for analytics, data quality, and operational tasks.
+Beyond the real-time streaming layer, Synora runs batch processing pipelines for analytics, data quality, and operational tasks.
 
 ### Pipeline Orchestration
 
@@ -599,7 +599,7 @@ graph LR
         TV4["Vizio TVs<br/>(SDK)"]
     end
     
-    subgraph "ACRaaS Platform"
+    subgraph "Synora Platform"
         PLAT["Fingerprint Matching<br/>+ Segmentation<br/>+ Monetization"]
     end
     
@@ -609,7 +609,7 @@ graph LR
     
     subgraph "Revenue Split"
         MFR["Manufacturers<br/>receive 30%"]
-        ACR["ACRaaS<br/>retains 70%"]
+        ACR["Synora<br/>retains 70%"]
     end
 
     TV1 --> PLAT
@@ -623,9 +623,9 @@ graph LR
 
 ### Why Manufacturers Say Yes
 
-The pitch to a TV manufacturer is straightforward. Today, when a consumer buys an LG TV for $800, LG captures roughly $0 in ongoing revenue from that device's viewing data (or a tiny fraction through weak first-party data efforts). By embedding the ACRaaS SDK — a 5MB binary that runs invisibly in the background — LG can earn $10-30 per device per year from data monetization, with zero incremental hardware cost and minimal firmware integration effort.
+The pitch to a TV manufacturer is straightforward. Today, when a consumer buys an LG TV for $800, LG captures roughly $0 in ongoing revenue from that device's viewing data (or a tiny fraction through weak first-party data efforts). By embedding the Synora SDK — a 5MB binary that runs invisibly in the background — LG can earn $10-30 per device per year from data monetization, with zero incremental hardware cost and minimal firmware integration effort.
 
-For a manufacturer shipping 10 million TVs annually, that's $100-300 million in recurring revenue from existing devices. Samsung already generates over $3 billion annually from its advertising data business. ACRaaS gives every other manufacturer a path to similar economics.
+For a manufacturer shipping 10 million TVs annually, that's $100-300 million in recurring revenue from existing devices. Samsung already generates over $3 billion annually from its advertising data business. Synora gives every other manufacturer a path to similar economics.
 
 ### Unit Economics
 
@@ -712,7 +712,7 @@ graph TB
 
 ## Scaling: From 1 Million to 1 Billion Devices
 
-ACRaaS is designed to scale horizontally at every layer. Here's how the platform grows with adoption:
+Synora is designed to scale horizontally at every layer. Here's how the platform grows with adoption:
 
 ### Scaling Trajectory
 
@@ -743,7 +743,7 @@ Every component is independently scalable: adding Kafka brokers requires zero do
 
 ## What Makes This Hard to Replicate
 
-The defensible moat of ACRaaS isn't any single piece of technology — it's the compounding network effect of data:
+The defensible moat of Synora isn't any single piece of technology — it's the compounding network effect of data:
 
 **Data flywheel.** More manufacturers embedding the SDK means more devices sending fingerprints, which means richer audience segments, which means higher CPMs from advertisers, which means more revenue share for manufacturers, which means more manufacturers want to embed the SDK. Once this wheel is spinning, it's extremely difficult for a competitor to catch up because advertisers will pay a premium for the platform with the largest device footprint.
 
@@ -794,7 +794,7 @@ open http://localhost:8089     # Airflow
 
 ## The Road Ahead
 
-ACRaaS is a fully functional platform today, but the roadmap extends well beyond basic ACR:
+Synora is a fully functional platform today, but the roadmap extends well beyond basic ACR:
 
 **Cross-device graph** — linking TV viewership to mobile and desktop behavior through probabilistic device graphs, enabling true cross-screen attribution for advertisers.
 

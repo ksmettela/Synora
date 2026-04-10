@@ -14,7 +14,7 @@
 
 namespace acr {
 
-static const char* DEVICE_ID_SALT = "ACRaaS_v1_device_salt_2024";
+static const char* DEVICE_ID_SALT = "Synora_v1_device_salt_2024";
 static const char* CACHE_DIR = "/var/lib/acr";
 static const char* CACHE_FILE = "/var/lib/acr/device_id";
 

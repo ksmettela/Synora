@@ -150,7 +150,7 @@ def generate_daily_report():
     logger.info("Generating daily segment report email")
     
     report_content = f"""
-    ACRaaS Daily Segmentation Report
+    Synora Daily Segmentation Report
     Generated: {datetime.utcnow().isoformat()}
     
     Segmentation Status: SUCCESS

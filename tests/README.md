@@ -1,6 +1,6 @@
-# ACRaaS Integration and Load Test Suite
+# Synora Integration and Load Test Suite
 
-Complete test suite for the ACRaaS platform, including integration tests, end-to-end tests, and load tests.
+Complete test suite for the Synora platform, including integration tests, end-to-end tests, and load tests.
 
 ## Test Structure
 
@@ -24,7 +24,7 @@ tests/
 
 ### 1. Running Services
 
-Before running tests, ensure all ACRaaS services are running:
+Before running tests, ensure all Synora services are running:
 
 ```bash
 # Start all services with docker-compose
@@ -275,7 +275,7 @@ pytest -m unit tests/
 ### GitHub Actions Example
 
 ```yaml
-name: ACRaaS Tests
+name: Synora Tests
 
 on: [push, pull_request]
 

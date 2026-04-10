@@ -1,4 +1,4 @@
-# ACRaaS SDK - API Reference
+# Synora SDK - API Reference
 
 ## C API (acr.h)
 
@@ -235,7 +235,7 @@ const char* acr_version(void);
 
 **Example:**
 ```c
-printf("ACRaaS SDK version: %s\n", acr_version());
+printf("Synora SDK version: %s\n", acr_version());
 ```
 
 ---

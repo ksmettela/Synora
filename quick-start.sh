@@ -2,7 +2,7 @@
 
 set -e
 
-echo "ACRaaS Quick Start"
+echo "Synora Quick Start"
 echo "=================="
 echo ""
 
@@ -27,7 +27,7 @@ chmod +x docker-compose.init.sh
 ./docker-compose.init.sh
 
 echo ""
-echo "✓ ACRaaS is ready\!"
+echo "✓ Synora is ready\!"
 echo ""
 echo "Service URLs:"
 echo "  Frontend:        http://localhost:3000"

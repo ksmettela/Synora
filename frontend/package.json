@@ -1,7 +1,7 @@
 {
   "name": "acraas-frontend",
   "version": "1.0.0",
-  "description": "ACRaaS Frontend Dashboard",
+  "description": "Synora Frontend Dashboard",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
