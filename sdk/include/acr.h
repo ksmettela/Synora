@@ -122,6 +122,25 @@ acr_error_t acr_get_device_id(char* buf, size_t len);
  */
 const char* acr_version(void);
 
+/**
+ * Fingerprint a raw PCM audio buffer.
+ *
+ * Host-side (Android / iOS) provides PCM and receives a 32-byte (256-bit)
+ * fingerprint. Pure function — no state, no I/O. Safe to call from any thread.
+ *
+ * @param pcm           Pointer to int16 PCM samples (mono).
+ * @param num_samples   Number of samples in pcm. Must be >= fft_size (4096).
+ * @param sample_rate   Sample rate of pcm in Hz (typically 16000).
+ * @param out_fp        Caller-provided buffer of at least 32 bytes.
+ * @param out_len       Size of out_fp in bytes (must be >= 32).
+ * @return ACR_SUCCESS on success, ACR_ERROR_AUDIO on invalid input.
+ */
+acr_error_t acr_fingerprint_pcm(const int16_t* pcm,
+                                size_t num_samples,
+                                int sample_rate,
+                                uint8_t* out_fp,
+                                size_t out_len);
+
 #ifdef __cplusplus
 }
 #endif

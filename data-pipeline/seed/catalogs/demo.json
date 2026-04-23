@@ -1,0 +1,34 @@
+{
+  "description": "Demo reference catalog for end-to-end testing. WAVs live alongside this manifest under ./wavs/; generate them with scripts/generate_demo_wavs.py.",
+  "items": [
+    {
+      "content_id": "demo-espn-sportscenter-s01e01",
+      "title": "ESPN SportsCenter",
+      "network": "ESPN",
+      "genre": "sports",
+      "episode": "S01E01",
+      "airdate": "2026-04-22T20:00:00Z",
+      "wav": "wavs/espn_sportscenter.wav",
+      "confidence": 0.95
+    },
+    {
+      "content_id": "demo-nbc-evening-news-2026-04-22",
+      "title": "NBC Evening News",
+      "network": "NBC",
+      "genre": "news",
+      "airdate": "2026-04-22T22:30:00Z",
+      "wav": "wavs/nbc_evening_news.wav",
+      "confidence": 0.95
+    },
+    {
+      "content_id": "demo-hbo-succession-s04e10",
+      "title": "Succession",
+      "network": "HBO",
+      "genre": "drama",
+      "episode": "S04E10",
+      "airdate": "2026-04-15T21:00:00Z",
+      "wav": "wavs/succession.wav",
+      "confidence": 0.95
+    }
+  ]
+}

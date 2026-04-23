@@ -286,4 +286,22 @@ const char* acr_version(void) {
     return ACR_SDK_VERSION;
 }
 
+acr_error_t acr_fingerprint_pcm(const int16_t* pcm,
+                                size_t num_samples,
+                                int sample_rate,
+                                uint8_t* out_fp,
+                                size_t out_len) {
+    if (!pcm || !out_fp || out_len < 32 || sample_rate <= 0 || num_samples < 4096) {
+        return ACR_ERROR_AUDIO;
+    }
+    try {
+        acr::FingerprintEngine engine(sample_rate, 4096);
+        auto fp = engine.fingerprint(pcm, num_samples);
+        std::copy(fp.begin(), fp.end(), out_fp);
+        return ACR_SUCCESS;
+    } catch (const std::exception&) {
+        return ACR_ERROR_AUDIO;
+    }
+}
+
 }  // extern "C"

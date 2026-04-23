@@ -129,7 +129,12 @@ impl ScyllaClient {
             return Err(anyhow\!("Fingerprint must be 256 bits (32 bytes)"));
         }
 
-        for (band_idx, chunk) in bytes.chunks(4).enumerate() {
+        // 1-byte bands (32 bands total). The averaged-log-spectrum
+        // fingerprint sees ~20% per-bit noise between same-content
+        // fingerprints at small time offsets. Per-byte recall probability
+        // with 1-byte bands is ~18%, giving ~99% LSH recall over 32 bands.
+        // Larger band sizes drop recall below acceptable thresholds.
+        for (band_idx, chunk) in bytes.chunks(1).enumerate() {
             let band_hash = hex::encode(chunk);
             let band = FingerprintBand {
                 band_index: band_idx as i32,
@@ -201,7 +206,7 @@ impl ScyllaClient {
 
         let mut candidates = std::collections::HashSet::new();
 
-        for (band_idx, chunk) in bytes.chunks(4).enumerate() {
+        for (band_idx, chunk) in bytes.chunks(1).enumerate() {
             let band_hash = hex::encode(chunk);
             let query = r#"
                 SELECT fingerprint_hash FROM acraas.fingerprint_bands
