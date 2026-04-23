@@ -1,84 +1,91 @@
-# Synora: Building the "Samsung Ads" for Every Other TV
+# Synora: An Open ACR Data Platform
 
-**The open ACR data platform that turns non-Samsung smart TVs into advertising goldmines.**
-
----
-
-## The $30 Billion Blind Spot in TV Advertising
-
-Every year, advertisers pour roughly $70 billion into TV advertising in the United States alone. But here's the dirty secret: they're flying half-blind. Samsung, through its Automatic Content Recognition (ACR) technology built into every Samsung Smart TV, has built an extraordinary data moat — it knows exactly what 50+ million US households are watching, second by second, and sells that intelligence to advertisers at premium CPMs.
-
-But Samsung only covers about 30% of the US Smart TV market. The other 70% — LG, Vizio, Sony, TCL, Hisense, Toshiba, and dozens of smaller brands — either have weak ACR implementations, fragmented data strategies, or don't monetize viewing data at all. That's roughly 100 million US households whose viewing behavior is invisible to advertisers.
-
-Synora Synora (Automatic Content Recognition as a Service) exists to close that gap. We provide a turnkey ACR SDK that any Smart TV manufacturer can embed in their firmware, a cloud platform that handles all the heavy lifting of fingerprint matching, audience segmentation, and real-time bidding integration, and a revenue-share model that makes the economics irresistible for manufacturers.
-
-The moat isn't the technology. The moat is the data.
+**A privacy-preserving Automatic Content Recognition platform for smart TV ecosystems — from on-device fingerprinting to audience monetization.**
 
 ---
 
-## What Synora Actually Does
+## What ACR Solves
 
-At its core, Synora answers one question at massive scale: *"What is this TV playing right now?"*
+Most TV advertising still flies blind. When a spot runs on a broadcast or streaming channel, the advertiser rarely knows *which specific households saw it*, what else those households were watching that evening, or how to reach the same audience again with a follow-up creative. Automatic Content Recognition (ACR) closes that gap: by identifying what a TV is playing, second by second, platforms can build addressable audience segments and attach real delivery data to every impression.
 
-Every 30 seconds, our SDK captures a 3-second audio snippet from the TV's audio bus, converts it into a cryptographic fingerprint hash (a one-way mathematical function — the original audio cannot be reconstructed), and batches these fingerprints for transmission to our cloud. There, we match them against a reference database of 50+ million episodes, movies, and live broadcasts. When we find a match, we know that Device X was watching ESPN SportsCenter at 8:47 PM EST. Multiply that across millions of devices, and you have the most granular picture of TV viewership outside Samsung's walled garden.
+A small number of TV manufacturers operate their own vertically integrated ACR stacks, and they monetize the resulting data at premium CPMs. For everyone else — the long tail of smart-TV OEMs, streaming-stick vendors, and set-top-box makers — the economic path to that same data is effectively closed, because building the pipeline end-to-end requires an SDK, a reference content database, a matching engine, a segmentation layer, an RTB front door, and a privacy/compliance program. That is a lot of distinct engineering and legal work to justify for any one OEM.
 
-The critical difference between Synora and a naive approach: we never capture raw audio. We never store full IP addresses. We never collect MAC addresses or personally identifiable information. The device ID itself is salted and rotated monthly so it cannot be traced back to a physical device. Privacy isn't an afterthought — it's baked into the protocol at the silicon level.
+Synora is a reference architecture for this end-to-end system: a turnkey ACR SDK that a manufacturer can embed in firmware, a cloud platform that handles fingerprint matching, audience segmentation, and bidding integration, and a revenue-share model that aligns incentives between the platform operator and OEM partners.
+
+The defensibility of an ACR platform is not the algorithm — the algorithms are well understood — but the combination of device footprint, content reference data, and compliance posture. Those compound slowly.
+
+---
+
+## What Synora Does
+
+At its core, Synora answers one question at scale: *"What is this TV playing right now?"*
+
+On each integrated device, the SDK periodically captures a short audio snippet from the TV's audio bus, converts it into a one-way fingerprint hash, and batches these fingerprints for transmission. In the cloud, the platform matches each incoming fingerprint against a reference database of broadcast and streaming content. When a match lands, the platform knows a specific (anonymized) device watched a specific program at a specific moment. Aggregated across millions of devices, this produces a granular view of TV viewership suitable for audience segmentation and addressable advertising.
+
+The important design constraint is what the platform does *not* collect:
+
+- Raw audio never leaves the device.
+- Full IP addresses are truncated before storage.
+- Hardware identifiers (MAC, serial) are never transmitted.
+- Device IDs are derived through a salted hash that rotates on a monthly schedule, so the same physical device cannot be re-linked across months without a compromise of the salting infrastructure.
+
+Privacy is a first-class design constraint, not a feature bolted on at the end.
 
 ---
 
 ## Platform Architecture
 
-The Synora platform is a distributed, cloud-native system designed to process over 1 million fingerprints per second with sub-200ms matching latency. Here's how it all fits together:
+Synora is a distributed, cloud-native system designed around stream processing. The data path is append-only, every component is independently scalable, and the boundaries between services are either HTTP (for request/response) or Kafka (for fan-out).
 
 ### System Architecture Overview
 
 ```mermaid
 graph TB
     subgraph "TV Devices (Manufacturer Firmware)"
-        SDK["Synora SDK<br/>(C++17, < 5MB)"]
-        AC["Audio Capture<br/>(ALSA/HDMI ARC)"]
+        SDK["ACR SDK<br/>(C++17, small footprint)"]
+        AC["Audio Capture<br/>(ALSA / HDMI ARC)"]
         FFT["FFT Fingerprint<br/>Engine"]
         LC["SQLite Local<br/>Cache (encrypted)"]
         AC --> FFT --> LC
         LC --> SDK
     end
 
-    SDK -->|"HTTPS POST<br/>batch of 20 FPs<br/>every 60s"| LB
+    SDK -->|"HTTPS POST<br/>batched fingerprints"| LB
 
-    subgraph "Synora Cloud Platform (AWS Multi-AZ)"
-        LB["Load Balancer<br/>(ALB)"]
-        
+    subgraph "Cloud Platform (Multi-AZ)"
+        LB["Load Balancer"]
+
         subgraph "Ingestion Layer"
-            ING["Fingerprint Ingestor<br/>(Go) :8080<br/>1M FP/sec"]
+            ING["Fingerprint Ingestor<br/>(Go) :8080"]
         end
 
         subgraph "Message Bus"
-            KAFKA["Apache Kafka<br/>(MSK)<br/>6 brokers, RF=3"]
+            KAFKA["Apache Kafka"]
         end
 
         subgraph "Processing Layer"
-            MATCH["Matching Engine<br/>(Python/Faust) :8081<br/>500K FP/sec"]
-            IDX["Fingerprint Indexer<br/>(Rust) :8082<br/>Sub-sec latency"]
-            SEG["Segmentation Engine<br/>(Python) :8083<br/>Real-time cohorts"]
+            MATCH["Matching Engine<br/>(Python / Faust) :8081"]
+            IDX["Fingerprint Indexer<br/>(Rust) :8082"]
+            SEG["Segmentation Engine<br/>(Python) :8083"]
         end
 
         subgraph "Data Stores"
-            SCYLLA["ScyllaDB<br/>50M episodes<br/>10-50ms p99"]
-            PG["PostgreSQL<br/>Consent & Billing"]
-            REDIS["Redis<br/>Cache & Segments"]
-            S3["S3 + Iceberg<br/>Data Warehouse<br/>1PB+"]
+            SCYLLA["ScyllaDB<br/>(reference index)"]
+            PG["PostgreSQL<br/>(consent, billing)"]
+            REDIS["Redis<br/>(cache, opt-out set)"]
+            S3["Object Store + Iceberg<br/>(data warehouse)"]
         end
 
         subgraph "Business Layer"
-            ADV["Advertiser API<br/>(FastAPI) :8084<br/>JWT + OpenRTB"]
-            PRIV["Privacy Service<br/>(FastAPI) :8085<br/>GDPR/CCPA"]
-            BILL["Billing Service<br/>(FastAPI) :8086<br/>Stripe"]
+            ADV["Advertiser API<br/>(FastAPI) :8084"]
+            PRIV["Privacy Service<br/>(FastAPI) :8085"]
+            BILL["Billing Service<br/>(FastAPI) :8086"]
         end
 
         subgraph "Data Pipeline"
             AIRFLOW["Apache Airflow"]
-            FLINK["Flink Jobs<br/>(Java/Scala)"]
-            SPARK["Spark Jobs<br/>(Scala)"]
+            FLINK["Flink Jobs"]
+            SPARK["Spark Jobs"]
         end
 
         LB --> ING
@@ -103,8 +110,8 @@ graph TB
     end
 
     subgraph "External Integrations"
-        DSP["DSPs<br/>(Google, TTD,<br/>Xandr)"]
-        PORTAL["Manufacturer<br/>Partner Portal"]
+        DSP["DSPs<br/>(via OpenRTB)"]
+        PORTAL["Partner Portal"]
         DASH["Analytics<br/>Dashboards"]
     end
 
@@ -123,25 +130,25 @@ graph TB
 
 | Layer | Technology | Why This Choice |
 |---|---|---|
-| **Device SDK** | C++17, ALSA, SQLite | Runs on constrained TV hardware, < 5MB binary, cross-platform |
-| **Ingestion** | Go (Gin framework) | 1M req/sec throughput, low memory, perfect for HTTP-heavy I/O |
-| **Message Bus** | Apache Kafka (AWS MSK) | 1M msg/sec, durable replay, multi-consumer fan-out |
-| **Matching** | Python (Faust streams) | Stateful stream processing with RocksDB, fast data-team iteration |
-| **Indexing** | Rust | Memory-safe, zero-cost abstractions, sub-millisecond ScyllaDB writes |
-| **Fingerprint DB** | ScyllaDB | O(1) lookups at 10-50ms p99, 10x cheaper than DynamoDB |
-| **APIs** | Python (FastAPI) | Async, auto-generated OpenAPI docs, rapid development |
-| **Data Warehouse** | Apache Iceberg + S3 | ACID on S3, $0.023/GB/month, schema evolution, time travel |
-| **Stream Processing** | Apache Flink (Java/Scala) | Exactly-once semantics, event-time windowing |
-| **Batch Processing** | Apache Spark (Scala) | Household aggregation, retention cleanup at petabyte scale |
-| **Orchestration** | Apache Airflow | DAG-based pipeline scheduling, backfill, alerting |
-| **Frontend** | React 18 + TypeScript | Modern dashboard for campaign management |
-| **Infrastructure** | Terraform + Helm + K8s | Reproducible, versioned cloud infrastructure |
+| **Device SDK** | C++17, ALSA, SQLite | Runs on constrained TV hardware, small binary, cross-platform |
+| **Ingestion** | Go | High-throughput HTTP, low memory overhead, good fit for I/O-heavy services |
+| **Message Bus** | Apache Kafka | High-throughput durable log, multi-consumer fan-out, replayable |
+| **Matching** | Python (Faust streams) | Stateful stream processing with RocksDB, rapid iteration |
+| **Indexing** | Rust | Memory safety, predictable latency, efficient ScyllaDB driver |
+| **Fingerprint DB** | ScyllaDB | Wide-column store with predictable low-latency lookups |
+| **APIs** | Python (FastAPI) | Async request handling, auto-generated OpenAPI docs |
+| **Data Warehouse** | Apache Iceberg on object storage | ACID on cheap storage, schema evolution, time-travel queries |
+| **Stream Processing** | Apache Flink | Exactly-once semantics, event-time windowing |
+| **Batch Processing** | Apache Spark | Large-scale aggregation and retention jobs |
+| **Orchestration** | Apache Airflow | DAG-based scheduling, backfill, alerting |
+| **Frontend** | React 18 + TypeScript | Dashboard for campaign and segment management |
+| **Infrastructure** | Terraform + Helm + Kubernetes | Reproducible, versioned cloud infrastructure |
 
 ---
 
-## The Fingerprint Pipeline: From Sound Wave to Revenue
+## The Fingerprint Pipeline: From Sound Wave to Match
 
-This is the heart of Synora — the journey of a single audio fingerprint from capture on a TV in someone's living room to revenue in a manufacturer's bank account.
+The heart of the platform is the journey of a single audio fingerprint from capture on a TV to a matched viewership event the rest of the system can reason about.
 
 ### End-to-End Data Flow
 
@@ -153,95 +160,87 @@ sequenceDiagram
     participant MAT as Matcher (Faust)
     participant SCY as ScyllaDB
     participant SEG as Segmentation Engine
-    participant ICE as Iceberg (S3)
+    participant ICE as Iceberg (Data Lake)
     participant ADV as Advertiser API
-    participant DSP as DSP (The Trade Desk)
+    participant DSP as DSP
     participant BIL as Billing Service
 
-    Note over TV: User watches ESPN SportsCenter
+    Note over TV: User watches a broadcast
 
-    TV->>TV: Capture 3s audio (ALSA)
-    TV->>TV: FFT → 256-bit fingerprint hash
+    TV->>TV: Capture short audio window
+    TV->>TV: FFT → 256-bit fingerprint
     TV->>TV: Store in SQLite cache
-    
-    Note over TV: Every 60 seconds...
-    
-    TV->>ING: HTTPS POST batch (20 fingerprints)
+
+    Note over TV: Periodically...
+
+    TV->>ING: HTTPS POST batched fingerprints
     ING->>ING: Validate API key, dedup, anonymize device_id
     ING->>KFK: Produce → raw.fingerprints topic
-    
+
     KFK->>MAT: Consume fingerprint batch
-    MAT->>SCY: Lookup fingerprint hash
-    SCY-->>MAT: Match: ESPN SportsCenter, confidence 0.97
+    MAT->>SCY: Lookup fingerprint hash (hamming-tolerant)
+    SCY-->>MAT: Match + confidence
     MAT->>KFK: Produce → matched.viewership topic
-    
+
     KFK->>SEG: Consume matched event
     SEG->>SEG: Evaluate segment rules (genre + DMA + income)
-    SEG->>SEG: Device → "Sports Fans, CA, $50K+"
+    SEG->>SEG: Update device segment membership
     SEG->>KFK: Produce → audience.segments topic
-    
-    Note over ICE: Every 5 minutes...
+
+    Note over ICE: Periodically...
     KFK->>ICE: Batch write (Parquet → Iceberg)
-    
-    Note over DSP: 30 minutes later...
-    DSP->>ADV: OpenRTB bid request: "Sports fans?"
-    ADV->>ADV: Lookup segments, calculate price
-    ADV-->>DSP: Response: match confirmed, $0.25 CPM
-    
+
+    Note over DSP: On bid request...
+    DSP->>ADV: OpenRTB bid request
+    ADV->>ADV: Lookup segments, compute price
+    ADV-->>DSP: Response with match + CPM
+
     Note over BIL: Month end...
     BIL->>ICE: Query all matched viewership
-    BIL->>BIL: Calculate revenue, 30% manufacturer share
-    BIL->>BIL: Generate Stripe invoice
+    BIL->>BIL: Compute revenue + partner share
+    BIL->>BIL: Generate invoices
 ```
 
 ### What Happens at Each Stage
 
-**Stage 1: Audio Capture & Fingerprinting (on-device)**
-The SDK running on the TV captures a 3-second audio sample from the HDMI audio bus or internal ALSA device. It downmixes stereo to mono at 8kHz, runs a Fast Fourier Transform to extract spectral peaks across Bark frequency bands, and hashes the result into a 256-bit SHA-256 fingerprint. This fingerprint is deterministic — the same audio always produces the same hash — but irreversible. You cannot reconstruct audio from the hash.
+**Stage 1 — Audio capture & fingerprinting (on-device).** The SDK captures a short audio sample from the HDMI audio bus or the platform's native audio capture API, downmixes to mono, runs an FFT, and reduces the result to a compact fingerprint hash. The hash is deterministic (the same audio always produces the same hash) but irreversible (the original audio cannot be reconstructed from it).
 
-**Stage 2: Batch Transmission**
-Fingerprints accumulate in an encrypted SQLite cache on the device (surviving reboots and power cycles). Every 60 seconds, the SDK batches up to 20 fingerprints into a single HTTPS POST to `ingest.acraas.io`. The payload is approximately 1KB per minute. If the network is unavailable, the cache holds up to 500 fingerprints and retries with exponential backoff.
+**Stage 2 — Batch transmission.** Fingerprints accumulate in an encrypted SQLite cache on the device that survives reboots and offline periods. The SDK batches fingerprints into a single HTTPS POST on a fixed cadence. When the network is unavailable, the cache holds a bounded number of fingerprints and retries with exponential backoff.
 
-**Stage 3: Ingestion & Validation (Go service)**
-Our Go-based ingestor service, running behind an Application Load Balancer on ECS Fargate, receives the batch. It validates the API key, deduplicates (same device within 60 seconds = skip), anonymizes the device ID with a monthly rotating salt, and produces individual messages to the `raw.fingerprints` Kafka topic. Average latency: 50ms. Throughput: 1 million fingerprints per second sustained.
+**Stage 3 — Ingestion & validation (Go service).** The Go-based ingestor receives batches, validates the API key, deduplicates repeats within a short window, anonymizes the device ID with a monthly rotating salt, and produces individual messages onto the `raw.fingerprints` Kafka topic. It is designed to scale horizontally behind a load balancer.
 
-**Stage 4: Content Matching (Python/Faust)**
-The matching engine, a stateful Kafka Streams application built on Faust, consumes from `raw.fingerprints`. For each fingerprint, it performs an O(1) lookup in ScyllaDB against our index of 50+ million episodes and movies. The matcher supports fuzzy matching with a 2-second drift tolerance and confidence scoring. An exact match (confidence > 0.95) covers ~85% of fingerprints. Fuzzy matches catch another ~10%. The remaining ~5% go to an unmatched queue for late-arrival handling.
+**Stage 4 — Content matching (Python/Faust).** The matching engine consumes from `raw.fingerprints`, performs a hamming-tolerant lookup against the reference index in ScyllaDB, scores the match, and emits `matched.viewership` events. Fingerprints that do not match any reference go to an unmatched queue for late-arrival handling.
 
-**Stage 5: Audience Segmentation (Python)**
-Matched viewership events flow into the segmentation engine, which evaluates targeting rules in real-time. A DSL-based rule engine combines genre data (sports, news, entertainment), geographic DMA regions, household income brackets, and behavioral patterns to place devices into advertiser-defined audience cohorts. Segment membership updates are pushed to Redis for sub-millisecond lookup during bid requests.
+**Stage 5 — Audience segmentation (Python).** Matched viewership events flow into the segmentation engine, where a rule engine combines genre, geography (DMA), household income bracket, and behavioral signals to place devices into advertiser-defined cohorts. Segment membership is pushed to Redis for fast lookup during bid requests.
 
-**Stage 6: Data Warehouse (Iceberg + S3)**
-All events — raw fingerprints, matched viewership, segment transitions — land in Apache Iceberg tables on S3 in Parquet columnar format. This gives us ACID transactions, schema evolution, and time-travel queries over a petabyte-scale data lake at $20/TB/month.
+**Stage 6 — Data warehouse (Iceberg on object storage).** All events — raw fingerprints, matched viewership, segment transitions — land in Iceberg tables in Parquet columnar format. This provides ACID transactions, schema evolution, and time-travel queries over a large-scale data lake on commodity object storage.
 
-**Stage 7: Monetization (OpenRTB)**
-When a demand-side platform sends a bid request asking "which devices match sports fans in California with household income above $50K?", our advertiser API consults Redis segment state and responds in under 5ms. Pricing is dynamic: a common segment like "sports fans" might command a $0.10 CPM, while a rare intersection like "high-income + tech + Northeast" could reach $0.35 CPM.
+**Stage 7 — Monetization (OpenRTB).** When a demand-side platform sends a bid request targeting a segment, the advertiser API consults Redis segment state and responds with a match decision and price. CPMs scale with segment narrowness: common segments are priced cheaply, rare intersections command premiums.
 
-**Stage 8: Revenue & Billing**
-At month end, the billing service queries Iceberg for all matched viewership attributed to each manufacturer's devices, calculates revenue, applies the 30/70 split (30% to manufacturer, 70% to platform), and generates Stripe invoices.
+**Stage 8 — Revenue & billing.** At month end, the billing service queries the warehouse for all matched viewership attributed to each partner, computes revenue, applies the partner share, and generates invoices.
 
 ---
 
-## The SDK: 5MB That Makes TVs Smarter
+## The SDK
 
-The Synora SDK is the foundational piece — a production-ready C++17 embedded library designed to run on resource-constrained Smart TV hardware.
+The SDK is the foundational piece — an embedded C++17 library designed to run on resource-constrained smart-TV hardware.
 
 ### SDK Architecture
 
 ```mermaid
 graph LR
-    subgraph "Synora SDK (C++17)"
+    subgraph "ACR SDK (C++17)"
         direction TB
-        
-        API["Public C ABI<br/><code>acr.h</code><br/>6 functions"]
-        
+
+        API["Public C ABI<br/><code>acr.h</code>"]
+
         subgraph "Core Modules"
-            AC["Audio Capture<br/><code>audio_capture.cpp</code><br/>ALSA integration<br/>16kHz mono PCM"]
+            AC["Audio Capture<br/><code>audio_capture.cpp</code><br/>ALSA integration<br/>16 kHz mono PCM"]
             FP["Fingerprint Engine<br/><code>fingerprint.cpp</code><br/>Cooley-Tukey FFT<br/>256-bit hash"]
-            DI["Device Identity<br/><code>device_id.cpp</code><br/>SHA256 + salt<br/>Cross-reboot stable"]
-            CA["Local Cache<br/><code>cache.cpp</code><br/>SQLite WAL mode<br/>500 FP capacity"]
+            DI["Device Identity<br/><code>device_id.cpp</code><br/>SHA-256 + monthly salt"]
+            CA["Local Cache<br/><code>cache.cpp</code><br/>SQLite WAL mode"]
             NW["Network Client<br/><code>network.cpp</code><br/>libcurl HTTPS<br/>Exponential backoff"]
-            CO["Consent Manager<br/><code>consent.cpp</code><br/>Opt-in/out state<br/>Cache purge on opt-out"]
+            CO["Consent Manager<br/><code>consent.cpp</code><br/>Opt-in state<br/>Purge on opt-out"]
         end
 
         API --> AC
@@ -255,31 +254,31 @@ graph LR
         CA --> NW
         CO --> CA
     end
-    
+
     subgraph "Platform Bindings"
         AND["Android (Kotlin)<br/>JNI Wrapper"]
         IOS["iOS (Swift)<br/>C Bridge"]
-        LIN["Linux / Tizen<br/>Native"]
+        LIN["Linux / Tizen / webOS<br/>Native"]
     end
-    
+
     API --> AND
     API --> IOS
     API --> LIN
 ```
 
-### SDK Specifications
+### SDK Design Targets
 
-| Property | Value |
+| Property | Target |
 |---|---|
-| Binary size | < 5MB |
-| Memory footprint | < 10MB RAM |
-| CPU usage | < 2% (background thread) |
-| Audio sample | 3 seconds, every 30 seconds |
-| Transmission | Batch of 20 FPs, every 60 seconds |
-| Bandwidth | ~1KB/minute |
-| Local cache | 500 fingerprints (survives reboot) |
-| Encryption | TLS 1.2+ for transmission, AES for local cache |
-| Platforms | Android TV, Tizen, webOS, Linux |
+| Binary size | Small (single-digit MB) |
+| Memory footprint | Low tens of MB RAM |
+| CPU usage | Low single-digit percent on a background thread |
+| Audio sample | Short window (~3 s) captured on a periodic cadence |
+| Transmission | Batched fingerprints over HTTPS |
+| Bandwidth | ~1 KB per minute sustained |
+| Local cache | Bounded, survives reboot |
+| Encryption | TLS for transport, encrypted local cache |
+| Platforms | Android TV, Tizen, webOS, Linux-based TV OSes |
 
 ### SDK State Machine
 
@@ -293,41 +292,44 @@ stateDiagram-v2
     STOPPED --> UNINITIALIZED: acr_shutdown()
     RUNNING --> UNINITIALIZED: acr_shutdown()
     UNINITIALIZED --> [*]
-    
+
     state RUNNING {
         [*] --> Capturing
-        Capturing --> Fingerprinting: 3s audio sample
+        Capturing --> Fingerprinting: audio sample
         Fingerprinting --> Caching: 256-bit hash
-        Caching --> Transmitting: batch of 20
-        Transmitting --> Capturing: wait 30s
+        Caching --> Transmitting: batched
+        Transmitting --> Capturing: wait
     }
 ```
 
-### Integration Code (3 Lines to Get Started)
+### Integration (C)
 
 ```c
 #include "acr.h"
 
-// Initialize with your manufacturer API key
-acr_config config = { .api_key = "mfr_key_abc123", .endpoint = "https://ingest.acraas.io" };
+acr_config config = {
+    .api_key = "partner_key_...",
+    .endpoint = "https://ingest.synora.example",
+};
 acr_init(&config);
 
-// Start capturing — that's it
+// Start capturing after the user has opted in.
+acr_set_consent(true);
 acr_start();
 
-// Later, when user opts out:
-acr_set_consent(false);  // Immediately purges local cache and stops collection
+// On opt-out, purge local cache and stop capture.
+acr_set_consent(false);
 ```
 
 ---
 
-## Microservices Deep Dive
+## Microservices Overview
 
 ### Service Communication Map
 
 ```mermaid
 graph TD
-    subgraph "Synchronous (HTTP/gRPC)"
+    subgraph "Synchronous (HTTP / gRPC)"
         FE["Frontend<br/>(React)"] -->|REST| ADV["Advertiser API"]
         FE -->|REST| PRIV["Privacy Service"]
         FE -->|REST| BILL["Billing Service"]
@@ -356,33 +358,33 @@ graph TD
     end
 ```
 
-### Service Performance Targets
+### Service Design Targets
 
-| Service | Language | Latency (p99) | Throughput | Scaling |
+| Service | Language | Latency target (p99) | Throughput target | Scaling |
 |---|---|---|---|---|
-| Fingerprint Ingestor | Go | 50ms | 1M FP/sec | 20-100 ECS tasks |
-| Fingerprint Indexer | Rust | 80ms writes | 500K ops/sec | 10-30 K8s pods |
-| Matching Engine | Python (Faust) | 200ms | 500K FP/sec | 10-50 K8s pods |
-| Segmentation Engine | Python | 5s (micro-batch) | 500K events/sec | 10-50 K8s pods |
-| Advertiser API | Python (FastAPI) | < 5ms (RTB) | 10K req/sec | 5-20 K8s pods |
-| Privacy Service | Python (FastAPI) | 100ms | 1K req/sec | 3-10 K8s pods |
-| Billing Service | Python (FastAPI) | 500ms | 100 req/sec | 2-5 K8s pods |
+| Fingerprint Ingestor | Go | Tens of ms | Hundreds of thousands of FP/sec | Horizontally scaled HTTP workers |
+| Fingerprint Indexer | Rust | Low tens of ms (writes) | Hundreds of thousands of ops/sec | Kubernetes pods |
+| Matching Engine | Python (Faust) | Low hundreds of ms | Hundreds of thousands of FP/sec | Kubernetes pods, partitioned by device |
+| Segmentation Engine | Python | Seconds (micro-batch) | Hundreds of thousands of events/sec | Kubernetes pods |
+| Advertiser API | Python (FastAPI) | Single-digit ms on RTB path | Low tens of thousands req/sec | Kubernetes pods, read-from-cache |
+| Privacy Service | Python (FastAPI) | Hundreds of ms | Thousands of req/sec | Kubernetes pods |
+| Billing Service | Python (FastAPI) | Seconds (batch) | Low hundreds of req/sec | Kubernetes pods, warehouse-backed |
 
 ---
 
 ## Privacy Architecture: Compliance by Design
 
-Privacy isn't a feature we bolted on — it's the foundational design constraint. Every architectural decision runs through a privacy filter first.
+Privacy is a foundational design constraint. Every architectural decision runs through a privacy filter first.
 
 ### Privacy Data Flow
 
 ```mermaid
 graph TB
     subgraph "On Device"
-        RAW["Raw Audio<br/>(3 seconds)"] -->|FFT hash| FP["256-bit<br/>Fingerprint Hash"]
+        RAW["Raw Audio<br/>(short window)"] -->|FFT hash| FP["256-bit<br/>Fingerprint Hash"]
         RAW -.->|"NEVER leaves<br/>the device"| X1["Discarded<br/>immediately"]
-        HW["Hardware IDs<br/>(MAC, serial)"] -->|"SHA256 +<br/>monthly salt"| ANON["Anonymized<br/>Device ID"]
-        IP["Full IP<br/>Address"] -->|"Truncate to /24"| PFX["IP Prefix<br/>(192.168.1.x)"]
+        HW["Hardware IDs<br/>(MAC, serial)"] -->|"SHA-256 +<br/>monthly salt"| ANON["Anonymized<br/>Device ID"]
+        IP["Full IP<br/>Address"] -->|"Truncate to /24"| PFX["IP Prefix"]
         TS["Precise<br/>Timestamp"] -->|"Round to minute"| RTS["Rounded<br/>Timestamp"]
     end
 
@@ -394,7 +396,6 @@ graph TB
     end
 
     subgraph "Never Collected"
-        style NC fill:#ff6b6b22,stroke:#ff6b6b
         NC1["Raw audio"]
         NC2["Full IP address"]
         NC3["MAC address"]
@@ -408,7 +409,7 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant User as TV User
-    participant SDK as Synora SDK
+    participant SDK as ACR SDK
     participant PRIV as Privacy Service
     participant REDIS as Redis (Opt-out Set)
     participant ING as Ingestor
@@ -429,7 +430,7 @@ sequenceDiagram
     REDIS-->>ING: BLOCKED - device opted out
     ING->>ING: Drop fingerprint, return 204
 
-    Note over User: User exercises GDPR Right to Deletion
+    Note over User: User exercises GDPR right to deletion
     User->>PRIV: POST /api/v1/users/{id}/forget-me
     PRIV->>ICE: Batch delete all historical data
     PRIV->>PRIV: Log deletion in immutable audit trail
@@ -438,34 +439,36 @@ sequenceDiagram
 
 ### Regulatory Compliance Matrix
 
-| Regulation | Requirement | How Synora Complies |
+| Regulation | Requirement | Design Approach |
 |---|---|---|
-| **GDPR** (EU) | Right to access | Privacy service exports all user data from Iceberg |
-| **GDPR** (EU) | Right to deletion | Batch job deletes via Iceberg ACID transactions |
+| **GDPR** (EU) | Right to access | Privacy service exports all user data from the warehouse |
+| **GDPR** (EU) | Right to deletion | Batch delete via Iceberg ACID transactions |
 | **GDPR** (EU) | Data minimization | No raw audio, no PII, truncated IPs, rounded timestamps |
 | **CCPA** (California) | Opt-out of sale | Redis opt-out set checked at ingestion; immediate enforcement |
 | **CCPA** (California) | Disclosure | OpenAPI docs enumerate all collected data fields |
 | **PIPEDA** (Canada) | Meaningful consent | SDK requires explicit opt-in before first capture |
 | **TCF 2.0** (IAB) | Vendor consent | Privacy service parses TC strings, enforces per-vendor rules |
-| **COPPA** (Children) | Age verification | Manufacturer responsible; SDK provides age-gate callback |
+| **COPPA** (Children) | Age verification | Partner responsible; SDK provides age-gate callback |
+
+These rows describe the *design* for compliance. Real-world certification and legal opinion for each jurisdiction remain the responsibility of the platform operator.
 
 ---
 
 ## Data Pipeline Architecture
 
-Beyond the real-time streaming layer, Synora runs batch processing pipelines for analytics, data quality, and operational tasks.
+Beyond the real-time streaming layer, Synora runs batch pipelines for analytics, data quality, and operational tasks.
 
 ### Pipeline Orchestration
 
 ```mermaid
 graph TD
     subgraph "Apache Airflow (Orchestrator)"
-        DAG1["Nightly Segmentation<br/>@daily 2:00 AM UTC"]
-        DAG2["Data Retention Cleanup<br/>@daily 3:00 AM UTC"]
-        DAG3["Manufacturer Payouts<br/>@monthly 1st"]
-        DAG4["SDK Health Check<br/>@hourly"]
-        DAG5["Data Quality Checks<br/>@daily 4:00 AM UTC"]
-        DAG6["Fingerprint Backfill<br/>@daily 5:00 AM UTC"]
+        DAG1["Nightly Segmentation"]
+        DAG2["Data Retention Cleanup"]
+        DAG3["Partner Payouts"]
+        DAG4["SDK Health Check"]
+        DAG5["Data Quality Checks"]
+        DAG6["Fingerprint Backfill"]
     end
 
     subgraph "Stream Processing (Flink)"
@@ -475,14 +478,14 @@ graph TD
     end
 
     subgraph "Batch Processing (Spark)"
-        S1["HouseholdAggregationJob<br/>Aggregates by household"]
-        S2["RetentionCleanupJob<br/>Purges expired data"]
-        S3["IcebergMaintenanceJob<br/>Compacts Iceberg tables"]
+        S1["HouseholdAggregationJob"]
+        S2["RetentionCleanupJob"]
+        S3["IcebergMaintenanceJob"]
     end
 
     subgraph "Data Stores"
         KAFKA["Kafka Topics"]
-        S3DB["S3 + Iceberg<br/>(Data Lake)"]
+        S3DB["Data Lake<br/>(Iceberg on object storage)"]
         TRINO["Trino<br/>(Query Engine)"]
     end
 
@@ -502,45 +505,45 @@ graph TD
 
 ### Key Pipeline Jobs
 
-**Nightly Segmentation (Spark)** runs at 2 AM UTC and re-computes household-level audience segments by aggregating the previous 24 hours of matched viewership data. This catches any segment transitions that the real-time engine might have missed and ensures segment state is consistent for billing.
+**Nightly segmentation (Spark)** recomputes household-level audience segments by aggregating the previous 24 hours of matched viewership. It catches transitions the real-time engine missed and ensures segment state is consistent for downstream billing.
 
-**Data Retention Cleanup (Spark)** enforces TTL policies: raw fingerprints older than 7 days, matched viewership older than 90 days, and aggregated segments older than 2 years are purged from Iceberg using ACID delete transactions.
+**Data retention cleanup (Spark)** enforces TTL policies: raw fingerprints beyond the retention window, matched viewership beyond a longer retention window, and aggregated segments beyond a multi-year window are purged from Iceberg using ACID delete transactions.
 
-**Manufacturer Payouts (Airflow + Trino)** runs on the 1st of each month, queries the data warehouse for all matched viewership attributed to each manufacturer, calculates revenue shares, and triggers Stripe invoicing.
+**Partner payouts (Airflow + Trino)** runs on a monthly cadence, queries the warehouse for all matched viewership attributed to each partner, computes revenue shares, and triggers invoicing.
 
-**Data Quality Checks (Airflow + Trino)** validates data completeness, checks for anomalies in fingerprint match rates, and alerts if any manufacturer's devices show unexpected drops in data volume.
+**Data quality checks (Airflow + Trino)** validates completeness, watches for anomalies in fingerprint match rates, and alerts when any partner's devices show unexpected drops in data volume.
 
 ---
 
 ## Infrastructure & Deployment
 
-### Cloud Infrastructure (Terraform)
+### Cloud Infrastructure
 
 ```mermaid
 graph TB
-    subgraph "AWS Region (us-east-1)"
+    subgraph "Cloud Region"
         subgraph "AZ-1"
-            EKS1["EKS Node Group"]
+            EKS1["Kubernetes Node Group"]
             SCYLLA1["ScyllaDB Node"]
-            KAFKA1["MSK Broker x2"]
+            KAFKA1["Kafka Broker"]
         end
-        
+
         subgraph "AZ-2"
-            EKS2["EKS Node Group"]
+            EKS2["Kubernetes Node Group"]
             SCYLLA2["ScyllaDB Node"]
-            KAFKA2["MSK Broker x2"]
+            KAFKA2["Kafka Broker"]
         end
-        
+
         subgraph "AZ-3"
-            EKS3["EKS Node Group"]
+            EKS3["Kubernetes Node Group"]
             SCYLLA3["ScyllaDB Node"]
-            KAFKA3["MSK Broker x2"]
+            KAFKA3["Kafka Broker"]
         end
-        
+
         subgraph "Managed Services"
-            RDS["RDS PostgreSQL<br/>(Multi-AZ)"]
-            ELAST["ElastiCache Redis<br/>(Cluster Mode)"]
-            S3["S3 Buckets<br/>(Cross-region repl.)"]
+            RDS["Managed PostgreSQL<br/>(Multi-AZ)"]
+            ELAST["Managed Redis<br/>(Cluster Mode)"]
+            S3["Object Store<br/>(Cross-region replication)"]
             ALB["Application<br/>Load Balancer"]
         end
     end
@@ -554,98 +557,33 @@ graph TB
 
 ```mermaid
 graph LR
-    DEV["Developer<br/>Push"] --> GH["GitHub<br/>Actions"]
-    
+    DEV["Developer<br/>Push"] --> GH["CI<br/>(GitHub Actions)"]
+
     GH --> LINT["Lint &<br/>Type Check"]
     GH --> TEST["Unit &<br/>Integration Tests"]
     GH --> SEC["Security<br/>Scan"]
-    
-    LINT --> BUILD["Docker<br/>Build"]
+
+    LINT --> BUILD["Container<br/>Build"]
     TEST --> BUILD
     SEC --> BUILD
-    
-    BUILD --> STG["Deploy to<br/>Staging (dev)"]
+
+    BUILD --> STG["Deploy to<br/>Staging"]
     STG --> INTG["Integration<br/>Tests"]
     INTG --> PROD["Deploy to<br/>Production"]
     PROD --> MON["Monitoring<br/>& Alerts"]
 ```
 
-### Terraform Modules
+### Infrastructure Modules
 
-The infrastructure is fully codified across 5 Terraform modules managing AWS resources across dev and prod environments:
+The infrastructure is codified as a set of Terraform modules:
 
 | Module | Resources | Purpose |
 |---|---|---|
-| **EKS** | Kubernetes cluster, node groups, IAM roles | Runs all microservices |
-| **RDS** | PostgreSQL Multi-AZ, parameter groups, backups | Consent, billing, advertiser data |
-| **S3** | Buckets, lifecycle policies, replication rules | Data lake, audit logs, backups |
-| **MSK** | Kafka brokers, topics, security groups | Event streaming backbone |
-| **ElastiCache** | Redis cluster, parameter groups | Caching, opt-out sets, segments |
-
----
-
-## The Business Model: Data is the Moat
-
-### Revenue Flow
-
-```mermaid
-graph LR
-    subgraph "Data Sources"
-        TV1["LG TVs<br/>(SDK)"]
-        TV2["TCL TVs<br/>(SDK)"]
-        TV3["Sony TVs<br/>(SDK)"]
-        TV4["Vizio TVs<br/>(SDK)"]
-    end
-    
-    subgraph "Synora Platform"
-        PLAT["Fingerprint Matching<br/>+ Segmentation<br/>+ Monetization"]
-    end
-    
-    subgraph "Revenue"
-        ADV["Advertisers<br/>pay CPM for<br/>audience segments"]
-    end
-    
-    subgraph "Revenue Split"
-        MFR["Manufacturers<br/>receive 30%"]
-        ACR["Synora<br/>retains 70%"]
-    end
-
-    TV1 --> PLAT
-    TV2 --> PLAT
-    TV3 --> PLAT
-    TV4 --> PLAT
-    PLAT --> ADV
-    ADV --> MFR
-    ADV --> ACR
-```
-
-### Why Manufacturers Say Yes
-
-The pitch to a TV manufacturer is straightforward. Today, when a consumer buys an LG TV for $800, LG captures roughly $0 in ongoing revenue from that device's viewing data (or a tiny fraction through weak first-party data efforts). By embedding the Synora SDK — a 5MB binary that runs invisibly in the background — LG can earn $10-30 per device per year from data monetization, with zero incremental hardware cost and minimal firmware integration effort.
-
-For a manufacturer shipping 10 million TVs annually, that's $100-300 million in recurring revenue from existing devices. Samsung already generates over $3 billion annually from its advertising data business. Synora gives every other manufacturer a path to similar economics.
-
-### Unit Economics
-
-| Metric | Value |
-|---|---|
-| Revenue per device per year | $10-30 |
-| Manufacturer share | 30% ($3-9/device/year) |
-| Platform share | 70% ($7-21/device/year) |
-| Cost per fingerprint processed | $0.001 |
-| Storage cost | $20/TB/month (S3) |
-| Infrastructure cost per 1M devices | ~$50K/month |
-| Gross margin at scale | 75-85% |
-
-### Pricing Tiers (CPM by Segment)
-
-| Segment Type | Example | CPM |
-|---|---|---|
-| Generic audience | "All TV viewers" | $0.05-0.10 |
-| Genre-based | "Sports fans" | $0.10-0.20 |
-| Behavioral | "Cord-cutters watching live sports" | $0.20-0.30 |
-| Premium intersection | "High-income + tech + Northeast + sports" | $0.30-0.50 |
-| Custom (advertiser-defined) | "Watched competitor's ad in last 7 days" | $0.50-1.00+ |
+| **Kubernetes** | Cluster, node groups, IAM roles | Runs all microservices |
+| **PostgreSQL** | Multi-AZ managed instance, parameter groups, backups | Consent, billing, advertiser data |
+| **Object Storage** | Buckets, lifecycle policies, replication rules | Data lake, audit logs, backups |
+| **Kafka** | Brokers, topics, security groups | Event streaming backbone |
+| **Redis** | Cluster, parameter groups | Caching, opt-out set, segment lookup |
 
 ---
 
@@ -666,16 +604,16 @@ graph TB
     end
 
     subgraph "Metrics (Prometheus)"
-        PROM["Prometheus<br/>:9090"]
-        M1["acraas_fingerprints_ingested_total"]
-        M2["acraas_matches_found_total"]
-        M3["acraas_api_requests_duration_seconds"]
-        M4["acraas_kafka_consumer_lag"]
-        M5["acraas_scylla_query_latency_p99"]
+        PROM["Prometheus"]
+        M1["fingerprints_ingested_total"]
+        M2["matches_found_total"]
+        M3["api_requests_duration_seconds"]
+        M4["kafka_consumer_lag"]
+        M5["scylla_query_latency_p99"]
     end
 
     subgraph "Visualization (Grafana)"
-        GRAF["Grafana :3001"]
+        GRAF["Grafana"]
         D1["System Overview"]
         D2["Service Health"]
         D3["Pipeline Metrics"]
@@ -683,7 +621,7 @@ graph TB
     end
 
     subgraph "Tracing (Jaeger)"
-        JAEG["Jaeger :16686"]
+        JAEG["Jaeger"]
         T1["Cross-service<br/>request tracing"]
     end
 
@@ -694,81 +632,64 @@ graph TB
     PROM --> M1 & M2 & M3 & M4 & M5
 ```
 
-### Disaster Recovery
+### Disaster Recovery Design
 
-| Component | Backup | Frequency | RTO | RPO |
+| Component | Backup | Frequency | RTO target | RPO target |
 |---|---|---|---|---|
-| ScyllaDB | Snapshots to S3 | Daily | 2 hours | 24 hours |
-| PostgreSQL | Binary replication | Continuous | 5 min | ~0 |
+| ScyllaDB | Snapshots to object storage | Daily | Hours | 24 hours |
+| PostgreSQL | Binary replication | Continuous | Minutes | ~0 |
 | Kafka | Replication factor 3 | Real-time | 0 | 0 |
-| S3 (Data Lake) | Cross-region replication | Continuous | 0 | 0 |
-| Redis | Not critical (rebuildable) | N/A | 5 min | N/A |
-
-**Overall platform SLA target: 99.9% uptime, < 1 hour RTO, < 5 minute RPO.**
+| Data Lake | Cross-region replication | Continuous | 0 | 0 |
+| Redis | Rebuildable | N/A | Minutes | N/A |
 
 ---
 
-## Scaling: From 1 Million to 1 Billion Devices
+## Scaling
 
-Synora is designed to scale horizontally at every layer. Here's how the platform grows with adoption:
+Synora is designed to scale horizontally at every layer. As device footprint grows, the pattern is to add capacity — never to rewrite.
 
 ### Scaling Trajectory
 
 ```mermaid
 graph LR
     subgraph "Phase 1: Launch"
-        P1["1M devices<br/>20 ECS tasks<br/>6 Kafka brokers<br/>9 ScyllaDB nodes"]
+        P1["Small device footprint<br/>Modest cluster sizes"]
     end
 
     subgraph "Phase 2: Growth"
-        P2["10M devices<br/>50 ECS tasks<br/>12 Kafka brokers<br/>18 ScyllaDB nodes"]
+        P2["Mid device footprint<br/>Wider Kafka / ScyllaDB"]
     end
 
     subgraph "Phase 3: Scale"
-        P3["100M devices<br/>200 ECS tasks<br/>24 Kafka brokers<br/>36 ScyllaDB nodes"]
+        P3["Large device footprint<br/>Sharded topics,<br/>Multi-region option"]
     end
 
-    subgraph "Phase 4: Dominance"
-        P4["1B+ devices<br/>Multi-region<br/>Federated Kafka<br/>Global ScyllaDB"]
+    subgraph "Phase 4: Global"
+        P4["Global device footprint<br/>Federated Kafka,<br/>Multi-region ScyllaDB"]
     end
 
     P1 --> P2 --> P3 --> P4
 ```
 
-Every component is independently scalable: adding Kafka brokers requires zero downtime (automatic cluster rebalance), ScyllaDB nodes join the ring with streaming rebalance (no locks), and ECS/Kubernetes services auto-scale based on CPU utilization and Kafka consumer lag.
+Every component is independently scalable: Kafka brokers join with zero downtime (automatic rebalance), ScyllaDB nodes join the ring with streaming rebalance (no locks), and Kubernetes services auto-scale on CPU utilization and Kafka consumer lag.
 
 ---
 
-## What Makes This Hard to Replicate
+## Defensibility
 
-The defensible moat of Synora isn't any single piece of technology — it's the compounding network effect of data:
+The hard parts of an ACR platform are not the algorithms — those are well understood in the literature. The things that compound slowly and are hard to replicate:
 
-**Data flywheel.** More manufacturers embedding the SDK means more devices sending fingerprints, which means richer audience segments, which means higher CPMs from advertisers, which means more revenue share for manufacturers, which means more manufacturers want to embed the SDK. Once this wheel is spinning, it's extremely difficult for a competitor to catch up because advertisers will pay a premium for the platform with the largest device footprint.
+**Device footprint.** More integrated devices means richer signal. Richer signal supports finer segments. Finer segments attract advertiser demand. Demand funds partner revenue share, which attracts more integrations. Getting this wheel spinning is the main business problem.
 
-**Reference database.** Our fingerprint index of 50+ million episodes, movies, and live broadcasts took years to build and requires continuous ingestion of new content. A new entrant would need to replicate this database before they could match a single fingerprint.
+**Reference content database.** A usable reference index requires continuous ingestion of broadcast and streaming content and careful management of licensing. A new entrant cannot match a single fingerprint without this corpus.
 
-**Privacy compliance infrastructure.** The consent management system, audit logging, GDPR/CCPA deletion workflows, and TCF 2.0 integration represent months of engineering and legal work. Getting this wrong means regulatory risk that no manufacturer wants to take on.
+**Privacy and compliance infrastructure.** Consent management, audit logs, GDPR/CCPA deletion workflows, and TCF 2.0 integration represent real engineering and legal work. Getting this wrong produces regulatory exposure that no OEM partner will accept.
 
-**Manufacturer integration inertia.** Once a manufacturer has embedded our SDK in their firmware, validated it through their QA process, and started receiving revenue checks, the switching cost is enormous. Firmware updates on Smart TVs are slow, expensive, and risky.
+**Partner integration inertia.** Once a partner has embedded the SDK in firmware, validated it through QA, and started receiving revenue, the switching cost is high. Firmware updates on smart TVs are slow and risky.
 
 ---
 
 ## Getting Started
-
-### For TV Manufacturers
-
-1. **Sign partnership agreement** — revenue share terms, data processing agreement, privacy obligations
-2. **Integrate the SDK** — 3 lines of C code, < 5MB binary, ships with your next firmware update
-3. **Validate in QA** — our integration test suite covers all edge cases (network failure, consent changes, power cycles)
-4. **Ship to devices** — OTA firmware update enables ACR on your installed base
-5. **Start earning** — monthly Stripe payouts begin within 30 days of first data
-
-### For Advertisers
-
-1. **Create account** — self-serve via the advertiser portal or white-glove onboarding
-2. **Define audience segments** — use our segment builder DSL or pre-built segments
-3. **Integrate via OpenRTB** — standard bid request/response protocol, compatible with all major DSPs
-4. **Monitor campaigns** — real-time reporting dashboard with reach, frequency, and attribution
 
 ### For Developers
 
@@ -783,25 +704,35 @@ docker-compose up -d
 ./docker-compose.init.sh
 
 # Access the services
-open http://localhost:3000     # Frontend
+open http://localhost:3000     # Advertiser dashboard
 open http://localhost:3001     # Grafana (admin/admin)
 open http://localhost:8089     # Airflow
 ```
 
+See `docs/sdk-integration-guide.md` for SDK integration, `docs/ARCHITECTURE.md` for the full system design, and `docs/api-reference.md` for the platform API.
+
+### For Partners
+
+The partner onboarding flow has four stages: integration agreement, SDK integration into firmware, QA validation against the integration test suite, and OTA rollout to an installed base. Ongoing payouts are handled through the billing service against a configurable revenue-share split.
+
+### For Advertisers
+
+The advertiser flow has three stages: account creation and API key provisioning, segment definition through the dashboard or segment-builder DSL, and OpenRTB integration with the demand-side platforms of choice. Delivery reporting is surfaced in the dashboard.
+
 ---
 
-## The Road Ahead
+## Roadmap
 
-Synora is a fully functional platform today, but the roadmap extends well beyond basic ACR:
+Synora's present scope is fingerprint capture, matching, segmentation, and monetization. Areas the architecture extends naturally into:
 
-**Cross-device graph** — linking TV viewership to mobile and desktop behavior through probabilistic device graphs, enabling true cross-screen attribution for advertisers.
+**Cross-device graph.** Linking TV viewership to mobile and desktop behavior through probabilistic device graphs, enabling cross-screen attribution.
 
-**Content-level insights** — moving beyond "what show" to "what scene" and "what ad" recognition, enabling competitive ad intelligence and creative optimization.
+**Content-level insights.** Moving beyond *what show* to *what scene* and *what ad* recognition, enabling competitive ad intelligence and creative optimization.
 
-**International expansion** — adapting the platform for EU (stricter GDPR), LATAM, and APAC markets with region-specific privacy frameworks and content databases.
+**International expansion.** Adapting the platform for jurisdictions with stricter or region-specific privacy frameworks and content databases.
 
-**ML-powered segmentation** — replacing rule-based segments with machine learning models that discover high-value audience clusters automatically, maximizing CPM yield.
+**ML-powered segmentation.** Replacing rule-based segments with learned models that discover high-value audience clusters automatically.
 
-**Real-time attribution** — closing the loop between TV ad exposure and purchase behavior, the holy grail of TV advertising measurement.
+**Real-time attribution.** Closing the loop between TV ad exposure and downstream behavior.
 
 ---

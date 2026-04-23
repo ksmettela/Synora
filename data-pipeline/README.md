@@ -1,77 +1,67 @@
 # Synora Data Pipeline
 
-Production-ready data pipeline for the Ad Credit as a Service platform. This repository contains three integrated components for real-time viewership ingestion, daily aggregation, and orchestrated processing.
+Three integrated components for real-time viewership ingestion, batch
+aggregation, and orchestrated processing.
+
+## Components
+
+### Flink Iceberg Ingestion (streaming)
+Consumes matched viewership from Kafka, enriches with household ID, writes
+to Iceberg.
+Path: `flink-jobs/`
+
+### Spark Aggregation & Maintenance (batch)
+Daily household rollups with 7-day windows, retention enforcement (90/365
+day policies), Iceberg table maintenance.
+Path: `spark-jobs/`
+
+### Airflow Orchestration (scheduling)
+4 DAGs: `nightly_segmentation`, `data_retention`, `manufacturer_payouts`,
+`sdk_health_check`. Custom Trino and Redis operators.
+Path: `airflow-dags/`
+
+### Seeder (reference catalog ingestion)
+Populates ScyllaDB with reference fingerprints from a content catalog.
+Shells out to `fingerprint_cli` so device and cloud share the same
+algorithm.
+Path: `seed/`
 
 ## Quick Start
 
 ```bash
-# 1. Build Flink Job
-cd flink-jobs
-mvn clean package -DskipTests
+# Flink
+cd flink-jobs && mvn clean package -DskipTests
 
-# 2. Build Spark Jobs
-cd ../spark-jobs
-sbt assembly
+# Spark
+cd ../spark-jobs && sbt assembly
 
-# 3. Deploy Airflow
-cd ../airflow-dags
-docker build -t acraas-airflow:latest .
-docker run -d -p 8080:8080 acraas-airflow:latest
+# Airflow
+cd ../airflow-dags && docker build -t acraas-airflow:latest . && \
+  docker run -d -p 8080:8080 acraas-airflow:latest
+
+# Seeder (requires fingerprint_cli built — see sdk/README.md)
+python3 seed/scripts/generate_demo_wavs.py
+python3 seed/seed_reference_catalog.py \
+  --catalog seed/catalogs/demo.json \
+  --fingerprint-cli /path/to/fingerprint_cli \
+  --indexer-url http://localhost:8082
 ```
 
-## Components
-
-### 1. Flink Iceberg Ingestion (Real-time)
-- Consumes matched viewership events from Kafka
-- Enriches with household ID derivation
-- Writes to Iceberg data lake
-- Path: `flink-jobs/`
-
-### 2. Spark Aggregation & Maintenance (Batch)
-- Daily household aggregation with 7-day windows
-- Data retention enforcement (90/365 day policies)
-- Iceberg table maintenance and optimization
-- Path: `spark-jobs/`
-
-### 3. Airflow Orchestration (Scheduling)
-- 4 DAGs: nightly_segmentation, data_retention, manufacturer_payouts, sdk_health_check
-- Custom Trino and Redis operators
-- Automated monitoring and alerting
-- Path: `airflow-dags/`
-
-## Architecture
+## Flow
 
 ```
-Kafka → Flink → Iceberg → Spark Aggregation → Iceberg → Airflow → Redis/PostgreSQL
-                                                              ↓
-                                                         Monitoring
+Device SDK ─► Kafka (raw.fingerprints)
+                  │
+                  ├─► Matching Engine ─► Kafka (matched.viewership)
+                  │                           │
+                  │                           ▼
+                  │                       Flink ─► Iceberg (data lake)
+                  │                                    │
+                  │                                    ▼
+                  │                              Spark (daily rollups)
+                  │                                    │
+                  │                                    ▼
+                  └─────────── Airflow ──────────► Redis / PostgreSQL
 ```
 
-## Configuration
-
-See `COMPONENT_SUMMARY.md` for detailed configuration variables and deployment instructions.
-
-## Files Overview
-
-- **FILES_CREATED.txt** - Complete list of created files
-- **COMPONENT_SUMMARY.md** - Detailed architecture and implementation guide
-- **README.md** - This file
-
-## Key Features
-
-- Real-time processing with exactly-once semantics
-- ACID transactions via Iceberg
-- Automated data retention enforcement
-- Household segmentation and Redis population
-- Manufacturer revenue share calculations
-- Comprehensive monitoring and alerting
-
-## Documentation
-
-Detailed documentation is available in:
-- `COMPONENT_SUMMARY.md` - Full implementation details
-- `FILES_CREATED.txt` - File inventory and descriptions
-
-## Status
-
-All components are production-ready with no placeholders or mock code.
+See `docs/ARCHITECTURE.md` (repo root) for the full platform architecture.

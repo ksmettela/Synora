@@ -41,7 +41,7 @@ make test-coverage     # With coverage reports
 ## Documentation
 
 Update relevant documentation when making changes:
-- API changes → `docs/API_REFERENCE.md`
+- API changes → `docs/api-reference.md`
 - Architecture changes → `docs/ARCHITECTURE.md`
 - Deployment changes → `docs/DEPLOYMENT.md`
 
